@@ -193,7 +193,7 @@ Structured JSON result rendered in modal
 
 **Marat Levykin**
 
-- 📺 YouTube: [@maratArtificialInelligence](https://www.youtube.com/@maratArtificialInelligence)
+- 📺 YouTube: [@maratArtificialIntelligence](https://www.youtube.com/@maratArtificialIntelligence)
 - 💬 VK: [vk.com/ProfAI](https://vk.com/ProfAI)
 
 ---
