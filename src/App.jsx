@@ -1043,7 +1043,7 @@ export default function App() {
           <div style={{padding:"8px 12px",borderTop:"1px solid #eee",background:"#fafafa"}}>
             <div style={{fontSize:10,color:"#aaa",lineHeight:1.6,textAlign:"center"}}>
               {t.authorBy} <span style={{fontWeight:700,color:"#555"}}>Marat Levykin</span><br/>
-              <a href="https://www.youtube.com/@maratArtificialInelligence" target="_blank" rel="noopener noreferrer"
+              <a href="https://www.youtube.com/@maratArtificialIntelligence" target="_blank" rel="noopener noreferrer"
                 style={{color:"#c00",textDecoration:"none",fontSize:10}}>{t.authorYT}</a>
               {" · "}
               <a href="https://vk.com/ProfAI" target="_blank" rel="noopener noreferrer"
