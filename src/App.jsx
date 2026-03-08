@@ -1,190 +1,213 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
-// ─── i18n ─────────────────────────────────────────────────────────────────────
 const T = {
   en: {
-    appName:"Little AI Beings",
-    author:"Created by Marat Levykin",
-    llmSettings:"🔌 LLM Settings",
-    llmProvider:"Provider",
-    llmAnthropicKey:"Anthropic API Key",
-    llmOllamaUrl:"Ollama URL",
-    llmModel:"Model",
-    llmConnect:"Connect",
-    llmRefresh:"Refresh models",
-    llmStatus:{ idle:"Not connected", connecting:"Connecting...", ok:"Connected", error:"Connection error" },
-    llmSave:"Save",
-    llmCancel:"Cancel",
-    llmApiKeyPlaceholder:"sk-ant-...",
-    llmNoModels:"No models found. Is Ollama running?",
-    llmOllamaHint:'Run: OLLAMA_ORIGINS="*" ollama serve',
-    patternLabel:"Pattern",
-    agentsBtn:"Agents",
-    pause:"⏸ Pause", resume:"▶ Resume", result:"📋 Result", reset:"↩ Reset",
-    step:"Step", team:"Team", log:"LOG",
+    appName:"Little AI Beings", author:"Created by Marat Levykin",
+    llmSettings:"🔌 LLM Settings", llmProvider:"Provider",
+    llmAnthropicKey:"Anthropic API Key", llmOllamaUrl:"Ollama URL",
+    llmModel:"Model", llmConnect:"Connect",
+    llmStatus:{ idle:"Not connected", connecting:"Connecting...", ok:"Connected", error:"Error" },
+    llmSave:"Save", llmCancel:"Cancel", llmApiKeyPlaceholder:"sk-ant-...",
+    llmNoModels:"No models found.", llmOllamaHint:'Run: OLLAMA_ORIGINS="*" ollama serve',
+    agentsBtn:"Agents", pause:"⏸ Pause", resume:"▶ Resume",
+    result:"📋 Result", reset:"↩ Reset",
+    step:"Stage", team:"Team", log:"LOG",
     taskPlaceholder:"Set a goal for the team...", taskLabel:"💬 Task",
-    send:"🚀 Send (Ctrl+Enter)", notInvolved:"not involved",
-    agentsThinking:"Agents thinking...",
+    send:"🚀 Send (Ctrl+Enter)", notInvolved:"waiting",
+    agentsThinking:"Thinking...", planning:"Planning...",
     startSolo:"Max works alone — start",
-    startTeam:(n)=>`Approve and start (${n} agent${n===1?"":"s"})`,
-    editPlan:"Edit plan — agents update automatically:",
-    teamComposition:"Team composition:",
+    startTeam:(n)=>`Start (${n} agent${n===1?"":"s"})`,
+    showDetailedPlan:"Show detailed plan",
+    planTitle:"Work Plan", editTeam:"Edit team:",
     correctionTitle:"🎩 Correction for Max",
-    correctionPlaceholder:"Enter new instruction or correction...",
+    correctionPlaceholder:"Enter correction or new instruction...",
     sendToMax:"✅ Send to Max", thinking:"⏳ Thinking...",
     freezeInstruction:"Enter instruction:",
     send2:"✅ Send", cancel:"✖ Cancel",
-    finalResults:"📋 Final Results", teamResult:"📦 Team result",
+    finalResults:"📋 Final Results", teamResult:"📦 Result",
     managerReport:"🎩 Manager report",
     copyJson:"📋 Copy JSON", copy:"📋 Copy",
     summary:"Summary", conclusion:"Conclusion",
     risks:"⚠️ Risks", metrics:"✅ Metrics",
     keyFacts:"Key facts:", recommendations:"Recommendations:", slide:"Slide",
-    archiveModal:"🗄 Internal Archive",
-    archiveEmpty:"Archive is empty. Add documents — agents will use them as context.",
+    archiveModal:"🗄 Internal Archive", archiveEmpty:"Archive is empty.",
     archiveUpload:"📁 Upload file (TXT or PDF)",
-    chooseFile:"📂 Choose file", readingFile:"⏳ Reading file...",
-    addManual:"✏️ Add manually",
-    docName:"Document name...", docContent:"Document content...",
-    addBtn:"+ Add", chars:"chars", saveArchive:"💾 Save archive",
-    settingsTitle:"⚙️ Agent Settings", skillsLabel:"Skills and role description:",
+    chooseFile:"📂 Choose file", readingFile:"⏳ Reading...",
+    addManual:"✏️ Add manually", docName:"Document name...", docContent:"Content...",
+    addBtn:"+ Add", chars:"chars", saveArchive:"💾 Save",
+    settingsTitle:"⚙️ Agent Settings",
+    skillsLabel:"Role and skills:", promptLabel:"System prompt (format rules):",
     saveSettings:"💾 Save", cancelBtn:"Cancel",
-    archiveSaved:(n)=>`🗄 Archive saved: ${n} documents`,
-    agentsSaved:"⚙️ Agent settings updated and saved",
-    goalLog:(g)=>`🎯 Goal: "${g}"`,
-    patternLog:(p)=>`🔀 Pattern: ${p}`,
-    archiveLog:(n)=>`🗄 Archive: ${n} documents`,
-    resultLog:(d)=>`📦 Result: ${d}`,
-    managerLog:(n,p)=>`🎩 ${n}: ${p}`,
-    teamLog:(names)=>`👥 Team: ${names}`,
-    startLog:"✅ Start!",
-    frozenLog:(n)=>`⏸ ${n} paused.`,
-    instructionLog:(n,t)=>`📩 → ${n}: ${t}`,
-    correctionLog:(t)=>`⏸ Correction: "${t}"`,
+    archiveSaved:(n)=>`🗄 Archive: ${n} docs`, agentsSaved:"⚙️ Settings saved",
+    goalLog:(g)=>`🎯 Goal: "${g}"`, patternLog:(p)=>`🔀 Pattern: ${p}`,
+    archiveLog:(n)=>`🗄 Archive: ${n} docs`, resultLog:(d)=>`📦 ${d}`,
+    managerLog:(n,p)=>`🎩 ${n}: ${p}`, teamLog:(names)=>`👥 Team: ${names}`,
+    startLog:"✅ Start!", frozenLog:(n)=>`⏸ ${n} paused.`,
+    instructionLog:(n,txt)=>`📩 → ${n}: ${txt}`, correctionLog:(txt)=>`⏸ Correction: "${txt}"`,
+    handoff:(f,to)=>`📨 ${f} → ${to}`,
+    timeoutLog:(n)=>`⚠️ Timeout: ${n}, retrying...`,
+    skipLog:(n)=>`⏭ ${n} skipped after 3 attempts`,
+    replanLog:"🔄 Max is replanning...",
+    editPlan:"✏️ Edit plan",
+    planEdited:"✅ Plan updated",
     patternDesc:{
-      supervisor:"Max coordinates the team, assigns tasks and finalizes the result",
-      pipeline:"Agents work strictly in sequence: Researcher → Analyst → Ideas → Writer → Critic",
-      blackboard:"All agents write to a shared board and read each other's results",
-      peer:"Agents work independently and exchange results directly",
+      supervisor:"Max coordinates: briefs team → agents work → Max synthesizes → Writer publishes",
+      pipeline:"Strict chain: each agent passes result to the next",
+      blackboard:"All read shared board, Writer publishes final result",
+      a2a:"Agents work independently then exchange directly, Writer publishes",
     },
-    patternNames:{ supervisor:"🎩 Supervisor", pipeline:"🔗 Pipeline", blackboard:"📋 Blackboard", peer:"🔄 Peer-to-peer" },
+    patternNames:{ supervisor:"🎩 Supervisor", pipeline:"🔗 Pipeline", blackboard:"📋 Blackboard", a2a:"🔄 A2A" },
     zones:{ common:"☕ Common Area", manager:"🎩 Max's Office", library:"📚 Knowledge Library", archive:"🗄 Internal Archive", lab:"🔬 Laboratory", board:"📋 Results Board" },
     agentNames:{ manager:"Max", researcher:"Rita", ideas:"Igor", analyst:"Anya", writer:"Vasya", critic:"Kolya" },
     agentRoles:{ manager:"Manager", researcher:"Researcher", ideas:"Ideas", analyst:"Analyst", writer:"Writer", critic:"Critic" },
-    zonePrompts:{
-      common:"You are about to start working. What do you plan? (1 sentence)",
-      manager:"You are in the office. What are you coordinating? (1-2 sentences)",
-      library:"You are searching the knowledge library. What did you find? (1-2 sentences)",
-      archive:"You are working with the internal archive. What are you analyzing? (1-2 sentences)",
-      lab:"You are working in the lab. What are you creating or analyzing? (2-3 sentences)",
-      board:"You are finalizing the result on the board. What did you write? (2-3 sentences)",
+    agentDefaultSkills:{
+      manager:"Planning, delegation, team coordination, synthesis",
+      researcher:"Information search, source analysis, data collection",
+      ideas:"Brainstorming, lateral thinking, concept generation",
+      analyst:"Structural analysis, pattern recognition, critical thinking",
+      writer:"Writing, structuring information, style adaptation",
+      critic:"Finding weaknesses, logic checking, quality assessment",
     },
-    sysManager:(name,role,skills,team,goal,prev,archive,pattern)=>`You are ${name} — ${role}.${skills?" Your skills: "+skills+".":""} Team: ${team}. Task: "${goal}".${prev}${archive}${pattern} Reply briefly, don't ask questions.`,
-    sysManagerSolo:(name,role,skills,goal,prev,archive,pattern)=>`You are ${name} — ${role}.${skills?" Your skills: "+skills+".":""} Task: "${goal}".${prev}${archive}${pattern} Reply briefly in first person.`,
-    sysAgent:(name,role,skills,goal,prev,archive,pattern)=>`You are ${name} — ${role}.${skills?" Your skills: "+skills+".":""} Task: "${goal}".${prev}${archive}${pattern} Reply briefly in first person. Don't ask for data — work with what you have.`,
-    planPromptSys:(name,role,agents)=>`You are ${name} — ${role}. Available agents: ${agents}. Return ONLY valid JSON: {"plan":"2-3 sentence plan using agent names","team":["id1","id2"],"output_type":"type","output_description":"what we create"} output_type: content_pack|document|code|analysis|strategy|research|presentation|other. team: only needed ids, don't include manager.`,
-    planPromptUser:(goal,pattern,desc,archive)=>`Task: "${goal}". Work pattern: ${pattern} — ${desc}.${archive} Which agents are needed, what is the plan?`,
-    reportSys:(name,team,pattern)=>`You are ${name} — manager (${team}). Pattern: ${pattern}. Write professionally.`,
-    reportUser:(goal,summary)=>`Task: "${goal}".\nTeam work:\n${summary}\n\nWrite a final report (5-7 sentences).`,
+    agentDefaultPrompts:{
+      manager:"Write reports strictly based on agents' actual results. Do not add information that was not in their work.",
+      researcher:"Provide concrete findings with specific details. Structure your response clearly.",
+      ideas:"Generate creative, actionable ideas. Be specific and original.",
+      analyst:"Provide structured analysis with clear conclusions backed by evidence.",
+      writer:"Write clear, well-structured content adapted to the goal.",
+      critic:"Your response MUST always consist of exactly 5 numbered points. Each point is a specific observation, issue, or approval. No preamble or conclusions.",
+    },
+    zonePrompts:{
+      common:"You are preparing to start work. What do you plan? (1 sentence)",
+      manager:"You are in your office coordinating the team. What are you doing? (1-2 sentences)",
+      library:"You searched the knowledge library. What did you find relevant to the task? (1-2 sentences)",
+      archive:"You are analyzing the internal archive documents. What key insights did you find? (1-2 sentences)",
+      lab:"You are working in the lab on your assignment. What are you producing? (2-3 sentences)",
+      board:"You are publishing the final result. Summarize your output. (2-3 sentences)",
+    },
+    planPromptSys:(name,role,agents,archiveTitles)=>`You are ${name} — ${role}. Available agents: ${agents}.${archiveTitles?" Archive documents available: "+archiveTitles+".":""} Return ONLY valid JSON: {"plan":"2-3 sentence plan in natural language describing who does what and in what order","team":["id1","id2"],"output_type":"content_pack|document|code|analysis|strategy|research|presentation|other","output_description":"what we create","instructions":{"agentId":"specific instruction for this agent"}} team: only needed agent ids, never include manager. instructions: only for agents in team.`,
+    planPromptUser:(goal,pattern,desc)=>`Task: "${goal}". Pattern: ${pattern} — ${desc}. Create a plan.`,
+    reportSys:(name,role)=>`You are ${name} — ${role}. Write a professional final report based ONLY on the agents' actual work results provided. Do not invent actions or findings not present in the data.`,
+    reportUser:(goal,board)=>`Task: "${goal}".\n\nAgents' actual results:\n${board}\n\nWrite a concise final report (4-5 sentences) based strictly on what was done.`,
+    replanSys:(name,role,team)=>`You are ${name} — ${role}. Team: ${team}. You are reviewing results and deciding next steps.`,
+    replanUser:(goal,board,inbox)=>`Task: "${goal}".\nWork done so far:\n${board}\nSignals received:\n${inbox}\n\nDecide: is the work sufficient to finalize? Return JSON: {"ready":true|false,"assessment":"1-2 sentences","next_instructions":{"agentId":"new instruction if needed"}}`,
     correctionSys:(name,role,team,goal)=>`You are ${name} — ${role}. Team: ${team}. Task: "${goal}".`,
-    correctionUser:(input)=>`User makes a correction: "${input}". How do you replan the work? (2-3 sentences)`,
-    prevCtxLabel:"\nWhat the team has already done:\n",
-    archiveCtxLabel:"\n\nInternal archive (use as context):\n",
-    patternCtx:{ supervisor:"", pipeline:"\nArchitecture: Pipeline. You are part of a sequential chain.", blackboard:"\nArchitecture: Blackboard. All agents write to a shared board.", peer:"\nArchitecture: Peer-to-peer. Agents work independently." },
+    correctionUser:(input)=>`User correction: "${input}". How do you replan? (2-3 sentences)`,
+    prevCtxLabel:"\nWork done so far:\n",
+    archiveCtxLabel:"\nInternal archive documents:\n",
+    patternCtxLabel:{
+      supervisor:"\nWork pattern: you report results to Max who coordinates everything.",
+      pipeline:"\nWork pattern: you receive input from the previous agent and pass your result to the next.",
+      blackboard:"\nWork pattern: all agents share a common board. Read others' work and build on it.",
+      a2a:"\nWork pattern: you work independently on your sub-task, then exchange results directly with others.",
+    },
+    speedLabel:"Speed", nowWorking:"Working:",
+    stageLabels:{ agent:"Agent", zone:"Zone", receives:"Receives", loop:"Loop" },
+    tableHeaders:["#","Agent","Zone","Receives","Loop"],
   },
   ru: {
-    appName:"Little AI Beings",
-    author:"Проект создан Marat Levykin",
-    llmSettings:"🔌 Настройки LLM",
-    llmProvider:"Провайдер",
-    llmAnthropicKey:"API ключ Anthropic",
-    llmOllamaUrl:"Адрес Ollama",
-    llmModel:"Модель",
-    llmConnect:"Подключить",
-    llmRefresh:"Обновить модели",
-    llmStatus:{ idle:"Не подключено", connecting:"Подключаюсь...", ok:"Подключено", error:"Ошибка подключения" },
-    llmSave:"Сохранить",
-    llmCancel:"Отмена",
-    llmApiKeyPlaceholder:"sk-ant-...",
-    llmNoModels:"Модели не найдены. Запущена ли Ollama?",
-    llmOllamaHint:'Запусти: OLLAMA_ORIGINS="*" ollama serve',
-    patternLabel:"Паттерн",
-    agentsBtn:"Агенты",
-    pause:"⏸ Пауза", resume:"▶ Продолжить", result:"📋 Результат", reset:"↩ Сброс",
-    step:"Шаг", team:"Команда", log:"ЛОГ",
+    appName:"Little AI Beings", author:"Проект создан Marat Levykin",
+    llmSettings:"🔌 Настройки LLM", llmProvider:"Провайдер",
+    llmAnthropicKey:"API ключ Anthropic", llmOllamaUrl:"Адрес Ollama",
+    llmModel:"Модель", llmConnect:"Подключить",
+    llmStatus:{ idle:"Не подключено", connecting:"Подключаюсь...", ok:"Подключено", error:"Ошибка" },
+    llmSave:"Сохранить", llmCancel:"Отмена", llmApiKeyPlaceholder:"sk-ant-...",
+    llmNoModels:"Модели не найдены.", llmOllamaHint:'Запусти: OLLAMA_ORIGINS="*" ollama serve',
+    agentsBtn:"Агенты", pause:"⏸ Пауза", resume:"▶ Продолжить",
+    result:"📋 Результат", reset:"↩ Сброс",
+    step:"Стадия", team:"Команда", log:"ЛОГ",
     taskPlaceholder:"Поставь цель команде...", taskLabel:"💬 Задача",
-    send:"🚀 Отправить (Ctrl+Enter)", notInvolved:"не задействован",
-    agentsThinking:"Агенты думают...",
+    send:"🚀 Отправить (Ctrl+Enter)", notInvolved:"ожидает",
+    agentsThinking:"Думает...", planning:"Планирую...",
     startSolo:"Макс работает сам — начать",
-    startTeam:(n)=>`Одобрить и начать (${n} агент${n===1?"":"ов"})`,
-    editPlan:"Отредактируй план — агенты обновятся автоматически:",
-    teamComposition:"Состав команды:",
+    startTeam:(n)=>`Начать (${n} агент${n===1?"":"ов"})`,
+    showDetailedPlan:"Показать детальный план",
+    planTitle:"План работы", editTeam:"Состав команды:",
     correctionTitle:"🎩 Корректировка для Макса",
-    correctionPlaceholder:"Введи новую вводную или корректировку...",
+    correctionPlaceholder:"Введи корректировку или новую вводную...",
     sendToMax:"✅ Отправить Максу", thinking:"⏳ Думает...",
     freezeInstruction:"Введи инструкцию:",
     send2:"✅ Отправить", cancel:"✖ Отмена",
-    finalResults:"📋 Итоговые результаты", teamResult:"📦 Результат работы команды",
+    finalResults:"📋 Итоговые результаты", teamResult:"📦 Результат",
     managerReport:"🎩 Отчёт менеджера",
     copyJson:"📋 Копировать JSON", copy:"📋 Копировать",
-    summary:"Итог", conclusion:"Вывод",
-    risks:"⚠️ Риски", metrics:"✅ Метрики",
+    summary:"Итог", conclusion:"Вывод", risks:"⚠️ Риски", metrics:"✅ Метрики",
     keyFacts:"Ключевые факты:", recommendations:"Рекомендации:", slide:"Слайд",
-    archiveModal:"🗄 Внутренний архив",
-    archiveEmpty:"Архив пуст. Добавь документы — агенты будут использовать их как контекст.",
+    archiveModal:"🗄 Внутренний архив", archiveEmpty:"Архив пуст.",
     archiveUpload:"📁 Загрузить файл (TXT или PDF)",
-    chooseFile:"📂 Выбрать файл", readingFile:"⏳ Читаю файл...",
-    addManual:"✏️ Добавить вручную",
-    docName:"Название документа...", docContent:"Содержимое документа...",
-    addBtn:"+ Добавить", chars:"символов", saveArchive:"💾 Сохранить архив",
-    settingsTitle:"⚙️ Настройки агентов", skillsLabel:"Навыки и описание роли:",
+    chooseFile:"📂 Выбрать файл", readingFile:"⏳ Читаю...",
+    addManual:"✏️ Добавить вручную", docName:"Название...", docContent:"Содержимое...",
+    addBtn:"+ Добавить", chars:"символов", saveArchive:"💾 Сохранить",
+    settingsTitle:"⚙️ Настройки агентов",
+    skillsLabel:"Роль и навыки:", promptLabel:"Системный промпт (правила формата):",
     saveSettings:"💾 Сохранить", cancelBtn:"Отмена",
-    archiveSaved:(n)=>`🗄 Архив сохранён: ${n} документов`,
-    agentsSaved:"⚙️ Настройки агентов обновлены и сохранены",
-    goalLog:(g)=>`🎯 Цель: "${g}"`,
-    patternLog:(p)=>`🔀 Паттерн: ${p}`,
-    archiveLog:(n)=>`🗄 Архив: ${n} документов`,
-    resultLog:(d)=>`📦 Результат: ${d}`,
-    managerLog:(n,p)=>`🎩 ${n}: ${p}`,
-    teamLog:(names)=>`👥 Команда: ${names}`,
-    startLog:"✅ Старт!",
-    frozenLog:(n)=>`⏸ ${n} остановлен.`,
-    instructionLog:(n,t)=>`📩 → ${n}: ${t}`,
-    correctionLog:(t)=>`⏸ Корректировка: "${t}"`,
+    archiveSaved:(n)=>`🗄 Архив: ${n} документов`, agentsSaved:"⚙️ Настройки сохранены",
+    goalLog:(g)=>`🎯 Цель: "${g}"`, patternLog:(p)=>`🔀 Паттерн: ${p}`,
+    archiveLog:(n)=>`🗄 Архив: ${n} документов`, resultLog:(d)=>`📦 ${d}`,
+    managerLog:(n,p)=>`🎩 ${n}: ${p}`, teamLog:(names)=>`👥 Команда: ${names}`,
+    startLog:"✅ Старт!", frozenLog:(n)=>`⏸ ${n} остановлен.`,
+    instructionLog:(n,txt)=>`📩 → ${n}: ${txt}`, correctionLog:(txt)=>`⏸ Корректировка: "${txt}"`,
+    handoff:(f,to)=>`📨 ${f} → ${to}`,
+    timeoutLog:(n)=>`⚠️ Таймаут: ${n}, повтор...`,
+    skipLog:(n)=>`⏭ ${n} пропущен после 3 попыток`,
+    replanLog:"🔄 Макс перепланирует...",
+    editPlan:"✏️ Редактировать план",
+    planEdited:"✅ План обновлён",
     patternDesc:{
-      supervisor:"Макс координирует команду, раздаёт задания и финализирует результат",
-      pipeline:"Агенты работают строго по цепочке: Исследователь → Аналитик → Идеи → Писатель → Критик",
-      blackboard:"Все агенты пишут в общую доску и читают чужие результаты",
-      peer:"Агенты работают независимо и напрямую обмениваются результатами",
+      supervisor:"Макс координирует: брифует команду → агенты работают → Макс синтезирует → Писатель публикует",
+      pipeline:"Строгая цепочка: каждый агент передаёт результат следующему",
+      blackboard:"Все читают общую доску, Писатель публикует итог",
+      a2a:"Агенты работают независимо, затем обмениваются напрямую, Писатель публикует",
     },
-    patternNames:{ supervisor:"🎩 Супервайзер", pipeline:"🔗 Конвейер", blackboard:"📋 Доска", peer:"🔄 P2P" },
+    patternNames:{ supervisor:"🎩 Супервайзер", pipeline:"🔗 Конвейер", blackboard:"📋 Доска", a2a:"🔄 A2A" },
     zones:{ common:"☕ Общий стол", manager:"🎩 Кабинет Макса", library:"📚 Библиотека знаний", archive:"🗄 Внутренний архив", lab:"🔬 Лаборатория", board:"📋 Доска результатов" },
     agentNames:{ manager:"Макс", researcher:"Рита", ideas:"Игорь", analyst:"Аня", writer:"Вася", critic:"Коля" },
     agentRoles:{ manager:"Менеджер", researcher:"Исследователь", ideas:"Идеи", analyst:"Аналитик", writer:"Писатель", critic:"Критик" },
-    zonePrompts:{
-      common:"Собираешься приступить к работе. Что планируешь? (1 предл)",
-      manager:"Ты в кабинете. Что координируешь? (1-2 предл)",
-      library:"Ищешь информацию в библиотеке знаний. Что нашёл? (1-2 предл)",
-      archive:"Работаешь с внутренним архивом. Что анализируешь? (1-2 предл)",
-      lab:"Работаешь в лаборатории. Что создаёшь или анализируешь? (2-3 предл)",
-      board:"Оформляешь финальный результат на доске. Что написал? (2-3 предл)",
+    agentDefaultSkills:{
+      manager:"Планирование, делегирование, координация команды, синтез",
+      researcher:"Поиск информации, анализ источников, сбор данных",
+      ideas:"Мозговой штурм, латеральное мышление, генерация концепций",
+      analyst:"Структурный анализ, распознавание паттернов, критическое мышление",
+      writer:"Написание текстов, структурирование информации, адаптация стиля",
+      critic:"Поиск слабых мест, проверка логики, оценка качества",
     },
-    sysManager:(name,role,skills,team,goal,prev,archive,pattern)=>`Ты ${name} — ${role}.${skills?" Твои навыки: "+skills+".":""} Команда: ${team}. Задача: "${goal}".${prev}${archive}${pattern} Отвечай кратко, не задавай вопросов.`,
-    sysManagerSolo:(name,role,skills,goal,prev,archive,pattern)=>`Ты ${name} — ${role}.${skills?" Твои навыки: "+skills+".":""} Задача: "${goal}".${prev}${archive}${pattern} Отвечай кратко от первого лица.`,
-    sysAgent:(name,role,skills,goal,prev,archive,pattern)=>`Ты ${name} — ${role}.${skills?" Твои навыки: "+skills+".":""} Задача: "${goal}".${prev}${archive}${pattern} Отвечай кратко от первого лица. Не проси данных — работай с тем что есть.`,
-    planPromptSys:(name,role,agents)=>`Ты ${name} — ${role}. Доступные агенты: ${agents}. Верни ТОЛЬКО валидный JSON: {"plan":"2-3 предложения плана","team":["id1","id2"],"output_type":"тип","output_description":"что создаём"} output_type: content_pack|document|code|analysis|strategy|research|presentation|other. team: только нужные id, manager не включай.`,
-    planPromptUser:(goal,pattern,desc,archive)=>`Задача: "${goal}". Паттерн работы: ${pattern} — ${desc}.${archive} Какие агенты нужны, каков план?`,
-    reportSys:(name,team,pattern)=>`Ты ${name} — менеджер (${team}). Паттерн: ${pattern}. Пиши профессионально.`,
-    reportUser:(goal,summary)=>`Задача: "${goal}".\nРабота команды:\n${summary}\n\nНапиши финальный отчёт (5-7 предл).`,
+    agentDefaultPrompts:{
+      manager:"Пиши отчёты строго на основе реальных результатов агентов. Не добавляй информацию которой не было в их работе.",
+      researcher:"Приводи конкретные находки с деталями. Структурируй ответ чётко.",
+      ideas:"Генерируй творческие, применимые идеи. Будь конкретным и оригинальным.",
+      analyst:"Давай структурированный анализ с чёткими выводами подкреплёнными данными.",
+      writer:"Пиши чёткий хорошо структурированный контент адаптированный к цели.",
+      critic:"Твой ответ ВСЕГДА должен состоять ровно из 5 пронумерованных пунктов. Каждый пункт — конкретное замечание, проблема или одобрение. Без вступлений и выводов.",
+    },
+    zonePrompts:{
+      common:"Готовишься приступить к работе. Что планируешь? (1 предложение)",
+      manager:"Ты в кабинете координируешь команду. Что делаешь? (1-2 предложения)",
+      library:"Искал информацию в библиотеке знаний. Что нашёл по теме задачи? (1-2 предложения)",
+      archive:"Анализируешь внутренний архив. Какие ключевые данные нашёл? (1-2 предложения)",
+      lab:"Работаешь в лаборатории над своим заданием. Что создаёшь? (2-3 предложения)",
+      board:"Публикуешь финальный результат. Что написал? (2-3 предложения)",
+    },
+    planPromptSys:(name,role,agents,archiveTitles)=>`Ты ${name} — ${role}. Доступные агенты: ${agents}.${archiveTitles?" Документы в архиве: "+archiveTitles+".":""} Верни ТОЛЬКО валидный JSON: {"plan":"2-3 предложения плана на естественном языке — кто что делает и в каком порядке","team":["id1","id2"],"output_type":"content_pack|document|code|analysis|strategy|research|presentation|other","output_description":"что создаём","instructions":{"agentId":"конкретное задание для этого агента"}} team: только нужные id агентов, manager не включай. instructions: только для агентов из team.`,
+    planPromptUser:(goal,pattern,desc)=>`Задача: "${goal}". Паттерн: ${pattern} — ${desc}. Составь план.`,
+    reportSys:(name,role)=>`Ты ${name} — ${role}. Пиши профессиональный финальный отчёт ТОЛЬКО на основе реальных результатов агентов. Не придумывай действия или находки которых не было в их работе.`,
+    reportUser:(goal,board)=>`Задача: "${goal}".\n\nРеальные результаты агентов:\n${board}\n\nНапиши краткий финальный отчёт (4-5 предложений) строго на основе того что было сделано.`,
+    replanSys:(name,role,team)=>`Ты ${name} — ${role}. Команда: ${team}. Ты просматриваешь результаты и решаешь следующие шаги.`,
+    replanUser:(goal,board,inbox)=>`Задача: "${goal}".\nВыполненная работа:\n${board}\nПолученные сигналы:\n${inbox}\n\nРешение: достаточно ли работы для финализации? Верни JSON: {"ready":true|false,"assessment":"1-2 предложения","next_instructions":{"agentId":"новое задание если нужно"}}`,
     correctionSys:(name,role,team,goal)=>`Ты ${name} — ${role}. Команда: ${team}. Задача: "${goal}".`,
-    correctionUser:(input)=>`Пользователь вносит корректировку: "${input}". Как перепланируешь работу? (2-3 предл)`,
-    prevCtxLabel:"\nЧто уже сделала команда:\n",
-    archiveCtxLabel:"\n\nВнутренний архив (используй как контекст):\n",
-    patternCtx:{ supervisor:"", pipeline:"\nАрхитектура: Pipeline. Ты часть последовательной цепочки.", blackboard:"\nАрхитектура: Blackboard. Все агенты пишут в общую доску.", peer:"\nАрхитектура: Peer-to-peer. Агенты работают независимо." },
+    correctionUser:(input)=>`Корректировка пользователя: "${input}". Как перепланируешь? (2-3 предложения)`,
+    prevCtxLabel:"\nВыполненная работа:\n",
+    archiveCtxLabel:"\nДокументы внутреннего архива:\n",
+    patternCtxLabel:{
+      supervisor:"\nПаттерн работы: ты докладываешь результаты Максу который координирует всё.",
+      pipeline:"\nПаттерн работы: ты получаешь входные данные от предыдущего агента и передаёшь результат следующему.",
+      blackboard:"\nПаттерн работы: все агенты работают с общей доской. Читай чужую работу и развивай её.",
+      a2a:"\nПаттерн работы: работаешь независимо над своей подзадачей, затем обмениваешься результатами напрямую.",
+    },
+    speedLabel:"Скорость", nowWorking:"Работает:",
+    stageLabels:{ agent:"Агент", zone:"Зона", receives:"Получает", loop:"Цикл" },
+    tableHeaders:["#","Агент","Зона","Получает","Цикл"],
   },
 };
 
-// ─── Zones ────────────────────────────────────────────────────────────────────
 const ZONE_KEYS = ["common","manager","library","archive","lab","board"];
 const ZONE_BASE = {
   common:  { x:10,  y:36,  w:190, h:155, color:"#f0f7f0", border:"#90c090" },
@@ -195,30 +218,26 @@ const ZONE_BASE = {
   board:   { x:580, y:205, w:170, h:200, color:"#f0fff4", border:"#40a060" },
 };
 
-const PATTERNS = {
-  supervisor:{ id:"supervisor", agentFlow:{ manager:["common","manager","manager","manager","board"], manager_solo:["common","lab","lab","lab","board"], researcher:["common","library","library","lab","common"], ideas:["common","manager","lab","lab","common"], analyst:["common","archive","archive","lab","common"], writer:["common","manager","lab","lab","board"], critic:["common","manager","lab","lab","manager"] } },
-  pipeline:  { id:"pipeline",   agentFlow:{ manager:["common","common","common","common","board"], researcher:["common","library","library","common","common"], analyst:["common","common","archive","archive","common"], ideas:["common","common","common","lab","common"], writer:["common","common","common","lab","board"], critic:["common","common","common","lab","board"] } },
-  blackboard:{ id:"blackboard", agentFlow:{ manager:["common","lab","lab","lab","board"], researcher:["common","lab","lab","lab","board"], analyst:["common","lab","lab","lab","board"], ideas:["common","lab","lab","lab","board"], writer:["common","lab","lab","lab","board"], critic:["common","lab","lab","lab","board"] } },
-  peer:      { id:"peer",       agentFlow:{ manager:["common","common","common","common","common"], researcher:["common","library","lab","lab","common"], analyst:["common","archive","lab","lab","common"], ideas:["common","lab","lab","lab","common"], writer:["common","lab","lab","board","board"], critic:["common","lab","lab","lab","board"] } },
+const COMMON_SEATS = {
+  manager:    { x:55,  y:90  },
+  researcher: { x:100, y:115 },
+  ideas:      { x:145, y:90  },
+  analyst:    { x:55,  y:155 },
+  writer:     { x:100, y:170 },
+  critic:     { x:145, y:155 },
 };
 
 const DEFAULT_AGENTS = [
-  { id:"manager",    emoji:"🎩", color:"#c8860a", skills:"Planning, delegation, team coordination, final review" },
-  { id:"researcher", emoji:"🔍", color:"#1a6fa8", skills:"External info search, source analysis, data collection" },
-  { id:"ideas",      emoji:"💡", color:"#b85a00", skills:"Brainstorming, lateral thinking, concept generation" },
-  { id:"analyst",    emoji:"🔬", color:"#2a7a2a", skills:"Structural analysis, pattern recognition, critical thinking" },
-  { id:"writer",     emoji:"✍️", color:"#7a2a9a", skills:"Writing texts, structuring information, style adaptation" },
-  { id:"critic",     emoji:"⚡", color:"#a02020", skills:"Finding weaknesses, logic checking, quality assessment" },
+  { id:"manager",    emoji:"🎩", color:"#c8860a" },
+  { id:"researcher", emoji:"🔍", color:"#1a6fa8" },
+  { id:"ideas",      emoji:"💡", color:"#b85a00" },
+  { id:"analyst",    emoji:"🔬", color:"#2a7a2a" },
+  { id:"writer",     emoji:"✍️", color:"#7a2a9a" },
+  { id:"critic",     emoji:"⚡", color:"#a02020" },
 ];
-
-const COWORK_STARTS = [
-  {x:55,y:120},{x:100,y:100},{x:150,y:120},{x:70,y:162},{x:115,y:165},{x:160,y:150}
-];
-
-const PLATFORM_COLORS = { Instagram:"#e040a0", Telegram:"#2080d0", LinkedIn:"#0060a0" };
 
 const OUT_PROMPTS = {
-  content_pack:`{"posts":[{"platform":"Instagram","text":"...","hashtags":"#..."},{"platform":"Telegram","text":"...","hashtags":""},{"platform":"LinkedIn","text":"...","hashtags":"#..."}],"headline":"...","key_message":"..."}`,
+  content_pack:`{"posts":[{"platform":"Instagram","text":"...","hashtags":"#..."},{"platform":"Telegram","text":"..."},{"platform":"LinkedIn","text":"...","hashtags":"#..."}],"headline":"...","key_message":"..."}`,
   document:`{"title":"...","sections":[{"heading":"...","content":"..."}],"summary":"..."}`,
   code:`{"language":"...","description":"...","code":"...","usage":"..."}`,
   analysis:`{"title":"...","findings":[{"point":"...","detail":"..."}],"conclusion":"...","recommendations":["..."]}`,
@@ -228,192 +247,362 @@ const OUT_PROMPTS = {
   other:`{"title":"...","sections":[{"heading":"...","content":"..."}],"summary":"..."}`,
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-const loadLS=(k,fb)=>{ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):fb; }catch{ return fb; } };
-const saveLS=(k,v)=>{ try{ localStorage.setItem(k,JSON.stringify(v)); }catch{} };
+const PLATFORM_COLORS = { Instagram:"#e040a0", Telegram:"#2080d0", LinkedIn:"#0060a0" };
 
-function makeAgentDefs(lang){ return DEFAULT_AGENTS.map(d=>({...d,name:T[lang].agentNames[d.id],role:T[lang].agentRoles[d.id]})); }
-function initAgents(defs){ return defs.map((d,i)=>({...d,x:COWORK_STARTS[i].x,y:COWORK_STARTS[i].y,tx:COWORK_STARTS[i].x,ty:COWORK_STARTS[i].y,zoneId:"common",bubble:"",status:"idle",customInstruction:null})); }
+const loadLS=(k,fb)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):fb;}catch{return fb;}};
+const saveLS=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
 
-// ─── LLM API ──────────────────────────────────────────────────────────────────
-async function callLLM(llmCfg, system, user, maxTokens=300) {
+function makeAgentDefs(lang) {
+  return DEFAULT_AGENTS.map(d=>({
+    ...d,
+    name:   T[lang].agentNames[d.id],
+    role:   T[lang].agentRoles[d.id],
+    skills: T[lang].agentDefaultSkills[d.id],
+    systemPrompt: T[lang].agentDefaultPrompts[d.id],
+  }));
+}
+
+function initAgents(defs) {
+  return defs.map(d=>{
+    const seat = COMMON_SEATS[d.id] || {x:80,y:120};
+    return {...d, x:seat.x, y:seat.y, tx:seat.x, ty:seat.y,
+            zoneId:"common", bubble:"", agentStatus:"waiting",
+            transitTo:null};
+  });
+}
+
+function getZonePos(zoneId, idx, total) {
+  const z = ZONE_BASE[zoneId];
+  if (zoneId==="lab") {
+    const cols=Math.min(total,5);
+    return {x:z.x+40+(idx%cols)*100, y:z.y+50+Math.floor(idx/cols)*75};
+  }
+  if (zoneId==="manager") {
+    const cols=Math.min(total,3);
+    return {x:z.x+28+(idx%cols)*52, y:z.y+45+Math.floor(idx/cols)*52};
+  }
+  if (zoneId==="board") {
+    return {x:z.x+85, y:z.y+50+(idx*60)};
+  }
+  const cols=Math.min(total,2);
+  return {x:z.x+32+(idx%cols)*70, y:z.y+50+Math.floor(idx/cols)*52};
+}
+
+function buildPlan(pattern, team, instructions, hasArchive, t) {
+  const has = id => team.includes(id);
+  const stages = [];
+  let n = 1;
+
+  const add = (agentId, zone, contextFrom, dependsOn=[], loop=null, receiveDesc="") => {
+    if (agentId!=="manager" && !has(agentId)) return null;
+    const id = `s${n}`;
+    stages.push({ id, step:n++, agentId, zone, contextFrom, instruction: instructions?.[agentId]||null,
+                  dependsOn, loop, receiveDesc, status:"pending", attempts:0 });
+    return id;
+  };
+
+  if (pattern==="supervisor") {
+    const s1 = add("manager","manager",["task","team"],[],null, t.lang==="ru"?"Задача + состав команды":"Task + team");
+    const teamStages = [];
+    if (has("researcher")) teamStages.push(add("researcher","library",["task","inbox"],[s1],null, t.lang==="ru"?"Задание от Макса":"Assignment from Max"));
+    if (has("analyst"))    teamStages.push(add("analyst", hasArchive?"archive":"lab",["task","inbox","archive"],[s1],null, t.lang==="ru"?"Задание от Макса":"Assignment from Max"));
+    if (has("ideas"))      teamStages.push(add("ideas","lab",["task","inbox"],[s1],null, t.lang==="ru"?"Задание от Макса":"Assignment from Max"));
+    const validTeam = teamStages.filter(Boolean);
+    const s_synth = add("manager","manager",["task","sharedBoard:all"], validTeam.length?validTeam:[s1],null, t.lang==="ru"?"Результаты команды":"Team results");
+    const s_write = has("writer") ? add("writer","lab",["task","inbox"],[s_synth],null, t.lang==="ru"?"Синтез Макса":"Max's synthesis") : null;
+    if (has("critic") && s_write) {
+      const s_crit = add("critic","lab",["task","inbox","sharedBoard:prev"],[s_write],{backTo:s_synth,max:3}, t.lang==="ru"?"Черновик Писателя":"Writer's draft");
+      add(has("writer")?"writer":"manager","board",["task","inbox","sharedBoard:prev","sharedBoard:all"],[s_crit],null, t.lang==="ru"?"Финал после правок":"Final after review");
+    } else {
+      add(has("writer")?"writer":"manager","board",["task","inbox","sharedBoard:prev"],[s_write||s_synth],null, t.lang==="ru"?"Синтез Макса":"Max's synthesis");
+    }
+  }
+
+  if (pattern==="pipeline") {
+    const chain = ["researcher","analyst","ideas","writer","critic"].filter(has);
+    let prev = null;
+    chain.forEach((id,i)=>{
+      const zone = id==="researcher"?"library": id==="analyst"?(hasArchive?"archive":"lab"):"lab";
+      const ctx = prev ? ["task","inbox","sharedBoard:prev"] : ["task","inbox"];
+      const recv = prev ? `${t.agentNames?.[chain[i-1]]||chain[i-1]} → ${t.agentNames?.[id]||id}` : (t.lang==="ru"?"Задача":"Task");
+      prev = add(id, zone, ctx, prev?[prev]:[], null, recv);
+    });
+    if (prev) {
+      const last = chain[chain.length-1];
+      const publisher = has("writer")?"writer":last;
+      if (publisher!==last) {
+        add(publisher,"board",["task","inbox","sharedBoard:prev"],[prev],null, t.lang==="ru"?"Финал цепочки":"Chain final");
+      } else {
+        const lastStage = stages[stages.length-1];
+        if (lastStage) { lastStage.zone="board"; }
+      }
+    }
+  }
+
+  if (pattern==="blackboard") {
+    const s1 = has("researcher") ? add("researcher","library",["task","inbox"],[],null, t.lang==="ru"?"Задача":"Task") : null;
+    const s2 = has("analyst")    ? add("analyst",hasArchive?"archive":"lab",["task","inbox","sharedBoard:all"],s1?[s1]:[],null, t.lang==="ru"?"Общая доска":"Shared board") : null;
+    const roundDeps = [s1,s2].filter(Boolean);
+    const roundAgents = ["ideas","writer","critic","manager"].filter(id=>id==="manager"||has(id));
+    roundAgents.forEach(id=>{
+      add(id, id==="manager"?"manager":"lab", ["task","inbox","sharedBoard:all"], roundDeps, null, t.lang==="ru"?"Вся общая доска":"Full shared board");
+    });
+    const allStages = stages.map(s=>s.id);
+    const publisher = has("writer")?"writer":"manager";
+    add(publisher,"board",["task","sharedBoard:all"],allStages,null, t.lang==="ru"?"Финальная доска":"Final board");
+  }
+
+  if (pattern==="a2a") {
+    const s1 = add("manager","manager",["task","team"],[],null, t.lang==="ru"?"Задача + декомпозиция":"Task + decomposition");
+    const indep = [];
+    if (has("researcher")) indep.push(add("researcher","library",["task","inbox"],[s1],null, t.lang==="ru"?"Своя подзадача":"Own sub-task"));
+    if (has("analyst"))    indep.push(add("analyst",hasArchive?"archive":"lab",["task","inbox","archive"],[s1],null, t.lang==="ru"?"Своя подзадача":"Own sub-task"));
+    if (has("ideas"))      indep.push(add("ideas","lab",["task","inbox"],[s1],null, t.lang==="ru"?"Своя подзадача":"Own sub-task"));
+    const validIndep = indep.filter(Boolean);
+    const exchangeAgents = ["researcher","analyst","ideas"].filter(has);
+    exchangeAgents.forEach(id=>{
+      add(id,"lab",["task","inbox","sharedBoard:all"],validIndep,null, t.lang==="ru"?"Обмен с командой":"Exchange with team");
+    });
+    const exchStages = stages.slice(validIndep.length+1).map(s=>s.id);
+    const s_write = has("writer") ? add("writer","lab",["task","inbox","sharedBoard:all"],exchStages.length?exchStages:validIndep,null, t.lang==="ru"?"Результаты обмена":"Exchange results") : null;
+    if (has("critic") && s_write) {
+      const s_crit = add("critic","lab",["task","sharedBoard:prev"],[s_write],{backTo:s_write,max:3}, t.lang==="ru"?"Черновик Писателя":"Writer's draft");
+      add(has("writer")?"writer":"manager","board",["task","inbox","sharedBoard:all"],[s_crit],null, t.lang==="ru"?"После проверки":"After review");
+    } else {
+      add(has("writer")?"writer":"manager","board",["task","sharedBoard:all"],s_write?[s_write]:exchStages,null, t.lang==="ru"?"Финальный обмен":"Final exchange");
+    }
+  }
+
+  // Solo plan: manager does everything alone
+  if (stages.length === 0) {
+    add("manager","manager",["task"],[],null, t.lang==="ru"?"Задача":"Task");
+    add("manager","board",["task","sharedBoard:prev"],["s1"],null, t.lang==="ru"?"Результат":"Result");
+  }
+
+  return stages;
+}
+
+async function callLLM(cfg, system, user, maxTokens=400, timeoutMs=15000) {
+  const controller = new AbortController();
+  const timer = setTimeout(()=>controller.abort(), timeoutMs);
   try {
-    if (llmCfg.provider==="ollama") {
-      const res = await fetch(`${llmCfg.ollamaUrl}/api/chat`, {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({ model:llmCfg.model, stream:false, options:{num_predict:maxTokens},
-          messages:[{role:"system",content:system},{role:"user",content:user}] }),
+    if (cfg.provider==="ollama") {
+      const res = await fetch(`${cfg.ollamaUrl}/api/chat`, {
+        method:"POST", headers:{"Content-Type":"application/json"}, signal:controller.signal,
+        body:JSON.stringify({model:cfg.model,stream:false,options:{num_predict:maxTokens},
+          messages:[{role:"system",content:system},{role:"user",content:user}]}),
       });
       const d = await res.json();
-      return (d.message?.content||"").trim().replace(/^#+\s*/gm,"")||"...";
+      return {ok:true, text:(d.message?.content||"").trim().replace(/^#+\s*/gm,"")||"..."};
     }
-    // Anthropic
     const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({ model:llmCfg.model||"claude-sonnet-4-20250514", max_tokens:maxTokens, system,
-        messages:[{role:"user",content:user}] }),
+      method:"POST", headers:{"Content-Type":"application/json"}, signal:controller.signal,
+      body:JSON.stringify({model:cfg.model||"claude-sonnet-4-20250514",max_tokens:maxTokens,system,
+        messages:[{role:"user",content:user}]}),
     });
     const d = await res.json();
     const text=(d.content?.[0]?.text||"").trim().replace(/^#+\s*/gm,"");
-    if(!text||text.length<3||text.includes("exceeded_limit")) return "...";
-    return text;
-  } catch { return "..."; }
+    if(!text||text.length<2) return {ok:true,text:"..."};
+    return {ok:true, text};
+  } catch(e) {
+    if(e.name==="AbortError") return {ok:false, text:"timeout"};
+    return {ok:false, text:"error"};
+  } finally { clearTimeout(timer); }
 }
 
-// ─── LLM Settings Modal ───────────────────────────────────────────────────────
-function LLMModal({ cfg, onSave, onClose, t }) {
-  const [provider, setProvider] = useState(cfg.provider||"anthropic");
-  const [apiKey,   setApiKey]   = useState(cfg.apiKey||"");
-  const [ollamaUrl,setOllamaUrl]= useState(cfg.ollamaUrl||"http://localhost:11434");
-  const [model,    setModel]    = useState(cfg.model||"");
-  const [models,   setModels]   = useState(cfg.availableModels||[]);
-  const [status,   setStatus]   = useState("idle"); // idle|connecting|ok|error
+function buildPrompt(agentId, stage, systemState, agentDefs, archiveFiles, t, lang) {
+  const def = agentDefs.find(d=>d.id===agentId);
+  if (!def) return {sys:"",user:""};
+  const {globalCtx, sharedBoard, inbox, stages} = systemState;
+  const patCtxRaw = t.patternCtxLabel;
+  const patCtx = (patCtxRaw && patCtxRaw[globalCtx.pattern]) ? patCtxRaw[globalCtx.pattern] : "";
 
-  const ANTHROPIC_MODELS = ["claude-sonnet-4-20250514","claude-opus-4-5","claude-haiku-4-5-20251001"];
+  let ctxParts = [];
+  if (stage.contextFrom.includes("inbox")) {
+    const msgs = inbox[agentId];
+    const msg = Array.isArray(msgs) ? msgs.slice(-1)[0] : null;
+    if (msg && msg.text) ctxParts.push((lang==="ru"?"Твоё задание: ":"Your assignment: ")+msg.text);
+  }
+  if (stage.contextFrom.includes("sharedBoard:all")) {
+    const entries = Object.entries(sharedBoard).filter(([,v])=>v?.text);
+    if (entries.length) ctxParts.push((lang==="ru"?"Результаты команды:\n":"Team results:\n")+
+      entries.map(([id,v])=>{const d=agentDefs.find(x=>x.id===id);return `${d?.emoji||""} ${d?.name||id}: ${v.text}`;}).join("\n"));
+  }
+  if (stage.contextFrom.includes("sharedBoard:prev")) {
+    const prevStage = [...stages].reverse().find(s=>s.status==="done"&&s.agentId!==agentId&&s.step<stage.step);
+    if (prevStage) {
+      const prev = sharedBoard[prevStage.agentId];
+      if (prev && prev.text) {
+        const prevDef = agentDefs.find(d=>d.id===prevStage.agentId);
+        const prevEmoji = (prevDef && prevDef.emoji) ? prevDef.emoji : "";
+        const prevName = (prevDef && prevDef.name) ? prevDef.name : prevStage.agentId;
+        ctxParts.push((lang==="ru"?"Результат предыдущего агента:\n":"Previous agent result:\n")+
+          `${prevEmoji} ${prevName}: ${prev.text}`);
+      }
+    }
+  }
+  if (stage.contextFrom.includes("archive")) {
+    if (archiveFiles.length) ctxParts.push(t.archiveCtxLabel+archiveFiles.map(f=>`[${f.name}]: ${f.text}`).join("\n\n"));
+  }
+  if (stage.contextFrom.includes("team")) {
+    const teamDesc = globalCtx.team.map(id=>{const d=agentDefs.find(x=>x.id===id);return `${d?.name||id}(${d?.role||id})`;}).join(", ");
+    ctxParts.push((lang==="ru"?"Команда: ":"Team: ")+teamDesc);
+  }
 
-  const testOllama = async (url) => {
-    setStatus("connecting");
-    try {
-      const res = await fetch(`${url}/api/tags`);
-      if (!res.ok) throw new Error();
-      const d = await res.json();
-      const list = (d.models||[]).map(m=>m.name).filter(Boolean);
-      setModels(list);
-      if (list.length && !list.includes(model)) setModel(list[0]);
-      setStatus("ok");
-      return list;
-    } catch { setStatus("error"); setModels([]); return []; }
-  };
+  const ctx = ctxParts.length ? "\n\n"+ctxParts.join("\n\n") : "";
+  const zonePromptMap = t.zonePrompts;
+  const isCode = globalCtx.task && /код|скрипт|code|script|python|javascript|программ/i.test(globalCtx.task);
+  const boardExtra = stage.zone==="board"
+    ? (lang==="ru"
+        ? (isCode
+            ? " Напиши ПОЛНЫЙ рабочий код — не описание, не псевдокод, а реальный исполняемый код. Включи все импорты, классы и функции."
+            : " Учти замечания критика если они есть. Создай финальную версию с учётом всех правок.")
+        : (isCode
+            ? " Write the COMPLETE working code — not a description, not pseudocode, but real executable code. Include all imports, classes and functions."
+            : " Incorporate any critic feedback. Produce the final version addressing all revisions."))
+    : "";
+  const zonePrompt = ((zonePromptMap && zonePromptMap[stage.zone]) ? zonePromptMap[stage.zone] : "What are you doing right now?") + boardExtra;
+  const sysPrompt = def.systemPrompt ? `\n\n─────────────────────\n${lang==="ru"?"ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА ОТВЕТА":"MANDATORY RESPONSE RULES"}:\n${def.systemPrompt}\n─────────────────────` : "";
 
-  const testAnthropic = async (key) => {
-    setStatus("connecting");
-    try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method:"POST",
-        headers:{"Content-Type":"application/json","x-api-key":key,"anthropic-version":"2023-06-01"},
-        body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:10,messages:[{role:"user",content:"hi"}]}),
-      });
-      const d = await res.json();
-      if (d.error) throw new Error();
-      setModels(ANTHROPIC_MODELS);
-      if (!ANTHROPIC_MODELS.includes(model)) setModel(ANTHROPIC_MODELS[0]);
-      setStatus("ok");
-    } catch { setStatus("error"); }
-  };
+  const sys = `${lang==="ru"?"Ты":"You are"} ${def.name} — ${def.role}. ${lang==="ru"?"Навыки":"Skills"}: ${def.skills}.`+
+    `\n${lang==="ru"?"Задача":"Task"}: "${globalCtx.task}".`+
+    patCtx + ctx + sysPrompt;
 
-  useEffect(()=>{
-    if (provider==="anthropic") setModels(ANTHROPIC_MODELS);
-  // eslint-disable-next-line
-  },[provider]);
+  return {sys, user: zonePrompt};
+}
 
-  const statusColor = { idle:"#aaa", connecting:"#c8860a", ok:"#2a8a50", error:"#d04040" }[status];
-  const statusDot   = { idle:"⚪", connecting:"🟡", ok:"🟢", error:"🔴" }[status];
-
+function Fig({x,y,color,emoji,agentStatus,figStyle,inLab}) {
+  const frozen = agentStatus==="stopped";
+  const sc=inLab?0.58:1, fc=frozen?"#bbb":color, skin=frozen?"#ddd":"#f5e0c0", hair="#3a2a1a";
+  const pulse = agentStatus==="working";
   return (
+    <g transform={`translate(${x},${y}) scale(${sc})`}>
+      {pulse && <circle r={24} fill="none" stroke={color} strokeWidth={2} opacity={0.4}>
+        <animate attributeName="r" values="20;30;20" dur="1.2s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.4;0.05;0.4" dur="1.2s" repeatCount="indefinite"/>
+      </circle>}
+      {figStyle==="dot" && <>
+        <circle r={9} fill={frozen?"#ccc":color} opacity={0.85}/>
+        <text textAnchor="middle" fontSize={8} dominantBaseline="middle">{emoji}</text>
+      </>}
+      {figStyle==="minimal" && <>
+        <line x1={-5} y1={14} x2={-7} y2={28} stroke={fc} strokeWidth={5} strokeLinecap="round"/>
+        <line x1={5} y1={14} x2={7} y2={28} stroke={fc} strokeWidth={5} strokeLinecap="round"/>
+        <rect x={-10} y={-4} width={20} height={20} rx={6} fill={fc}/>
+        <line x1={-10} y1={2} x2={-18} y2={14} stroke={fc} strokeWidth={5} strokeLinecap="round"/>
+        <line x1={10} y1={2} x2={18} y2={14} stroke={fc} strokeWidth={5} strokeLinecap="round"/>
+        <circle cy={-20} r={13} fill={skin}/>
+        <text textAnchor="middle" fontSize={14} y={-40}>{emoji}</text>
+      </>}
+      {(figStyle==="modern"||figStyle==="detailed") && <>
+        <rect x={-8} y={12} width={7} height={16} rx={3} fill={fc}/>
+        <rect x={1} y={12} width={7} height={16} rx={3} fill={fc}/>
+        <ellipse cx={-5} cy={28} rx={5} ry={3} fill="#333"/>
+        <ellipse cx={5} cy={28} rx={5} ry={3} fill="#333"/>
+        <rect x={-10} y={-4} width={20} height={18} rx={5} fill={fc}/>
+        <rect x={-4} y={-3} width={8} height={14} rx={2} fill="#fff" opacity={0.6}/>
+        <rect x={-16} y={-3} width={7} height={14} rx={3} fill={fc}/>
+        <rect x={9} y={-3} width={7} height={14} rx={3} fill={fc}/>
+        <circle cx={-13} cy={12} r={4} fill={skin}/>
+        <circle cx={13} cy={12} r={4} fill={skin}/>
+        <ellipse cy={-20} rx={11} ry={12} fill={skin}/>
+        <ellipse cy={-30} rx={11} ry={5} fill={hair}/>
+        <circle cx={-4} cy={-21} r={1} fill="#222"/>
+        <circle cx={4} cy={-21} r={1} fill="#222"/>
+        <text textAnchor="middle" fontSize={13} y={-38}>{emoji}</text>
+      </>}
+      {frozen && <text textAnchor="middle" fontSize={16} y={-52}>❄️</text>}
+      {agentStatus==="done" && <text textAnchor="middle" fontSize={12} y={-52}>✅</text>}
+    </g>
+  );
+}
+
+function Arrow({x1,y1,x2,y2,color}) {
+  const dx=x2-x1,dy=y2-y1,len=Math.sqrt(dx*dx+dy*dy);
+  if(len<10) return null;
+  const nx=dx/len,ny=dy/len;
+  const sx=x1+nx*24,sy=y1+ny*24,ex=x2-nx*24,ey=y2-ny*24;
+  const ax=-ny*7,ay=nx*7;
+  return(
+    <g>
+      <line x1={sx} y1={sy} x2={ex} y2={ey} stroke={color||"#4060c0"} strokeWidth={2} opacity={0.7} strokeDasharray="7 4">
+        <animate attributeName="stroke-dashoffset" from="0" to="-22" dur="0.6s" repeatCount="indefinite"/>
+      </line>
+      <polygon points={`${ex},${ey} ${ex-nx*11+ax},${ey-ny*11+ay} ${ex-nx*11-ax},${ey-ny*11-ay}`} fill={color||"#4060c0"} opacity={0.85}/>
+    </g>
+  );
+}
+
+function LLMModal({cfg,onSave,onClose,t}) {
+  const [provider,setProvider]=useState(cfg.provider||"anthropic");
+  const [apiKey,setApiKey]=useState(cfg.apiKey||"");
+  const [ollamaUrl,setOllamaUrl]=useState(cfg.ollamaUrl||"http://localhost:11434");
+  const [model,setModel]=useState(cfg.model||"");
+  const [models,setModels]=useState(cfg.availableModels||[]);
+  const [status,setStatus]=useState("idle");
+  const AM=["claude-sonnet-4-20250514","claude-opus-4-5","claude-haiku-4-5-20251001"];
+  const testOllama=async(url)=>{setStatus("connecting");try{const r=await fetch(`${url}/api/tags`);const d=await r.json();const l=(d.models||[]).map(m=>m.name).filter(Boolean);setModels(l);if(l.length&&!l.includes(model))setModel(l[0]);setStatus("ok");}catch{setStatus("error");setModels([]);}};
+  const testAnthropic=async(k)=>{setStatus("connecting");try{const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":k,"anthropic-version":"2023-06-01"},body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:10,messages:[{role:"user",content:"hi"}]})});const d=await r.json();if(d.error)throw new Error();setModels(AM);if(!AM.includes(model))setModel(AM[0]);setStatus("ok");}catch{setStatus("error");}};
+  useEffect(()=>{if(provider==="anthropic"){setModels(AM);}},[provider]);
+  const sc={idle:"#aaa",connecting:"#c8860a",ok:"#2a8a50",error:"#d04040"}[status];
+  const sd={idle:"⚪",connecting:"🟡",ok:"🟢",error:"🔴"}[status];
+  return(
     <div style={{position:"fixed",inset:0,background:"#00000066",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
       <div style={{background:"#fff",borderRadius:16,maxWidth:500,width:"100%",boxShadow:"0 16px 64px #0005"}}>
         <div style={{padding:"14px 20px",borderBottom:"1px solid #eee",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <b style={{fontSize:16,color:"#222"}}>{t.llmSettings}</b>
+          <b style={{fontSize:16}}>{t.llmSettings}</b>
           <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#888"}}>✕</button>
         </div>
         <div style={{padding:20,display:"flex",flexDirection:"column",gap:14}}>
-
-          {/* Provider */}
-          <div>
-            <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:6}}>{t.llmProvider}</div>
+          <div><div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:6}}>{t.llmProvider}</div>
             <div style={{display:"flex",gap:8}}>
               {["anthropic","ollama"].map(p=>(
                 <button key={p} onClick={()=>{setProvider(p);setStatus("idle");setModel("");}}
-                  style={{...S.btn(provider===p?"#4060c0":"#f4f4f8",provider===p?"#fff":"#555"),
-                    flex:1,fontSize:13,border:`2px solid ${provider===p?"#4060c0":"#ddd"}`}}>
+                  style={{...S.btn(provider===p?"#4060c0":"#f4f4f8",provider===p?"#fff":"#555"),flex:1,border:`2px solid ${provider===p?"#4060c0":"#ddd"}`}}>
                   {p==="anthropic"?"☁️ Anthropic":"🦙 Ollama"}
                 </button>
               ))}
             </div>
           </div>
-
-          {/* Anthropic key */}
-          {provider==="anthropic" && (
-            <div>
-              <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:5}}>{t.llmAnthropicKey}</div>
-              <div style={{display:"flex",gap:8}}>
-                <input type="password" value={apiKey} onChange={e=>setApiKey(e.target.value)}
-                  placeholder={t.llmApiKeyPlaceholder}
-                  style={{flex:1,border:"1.5px solid #ddd",borderRadius:7,padding:"7px 10px",fontSize:13,color:"#333"}}/>
-                <button onClick={()=>testAnthropic(apiKey)} disabled={!apiKey.trim()}
-                  style={{...S.btn("#4060c0","#fff"),fontSize:12,opacity:!apiKey.trim()?0.5:1}}>{t.llmConnect}</button>
-              </div>
+          {provider==="anthropic"&&<div><div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:5}}>{t.llmAnthropicKey}</div>
+            <div style={{display:"flex",gap:8}}>
+              <input type="password" value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder={t.llmApiKeyPlaceholder} style={{flex:1,border:"1.5px solid #ddd",borderRadius:7,padding:"7px 10px",fontSize:13,color:"#333"}}/>
+              <button onClick={()=>testAnthropic(apiKey)} disabled={!apiKey.trim()} style={{...S.btn("#4060c0","#fff"),fontSize:12,opacity:!apiKey.trim()?0.5:1}}>{t.llmConnect}</button>
             </div>
-          )}
-
-          {/* Ollama URL */}
-          {provider==="ollama" && (
-            <div>
-              <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:5}}>{t.llmOllamaUrl}</div>
-              <div style={{display:"flex",gap:8}}>
-                <input value={ollamaUrl} onChange={e=>setOllamaUrl(e.target.value)}
-                  style={{flex:1,border:"1.5px solid #ddd",borderRadius:7,padding:"7px 10px",fontSize:13,color:"#333"}}/>
-                <button onClick={()=>testOllama(ollamaUrl)}
-                  style={{...S.btn("#a070c0","#fff"),fontSize:12}}>{t.llmConnect}</button>
-              </div>
-              <div style={{fontSize:11,color:"#aaa",marginTop:5}}>{t.llmOllamaHint}</div>
+          </div>}
+          {provider==="ollama"&&<div><div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:5}}>{t.llmOllamaUrl}</div>
+            <div style={{display:"flex",gap:8}}>
+              <input value={ollamaUrl} onChange={e=>setOllamaUrl(e.target.value)} style={{flex:1,border:"1.5px solid #ddd",borderRadius:7,padding:"7px 10px",fontSize:13,color:"#333"}}/>
+              <button onClick={()=>testOllama(ollamaUrl)} style={{...S.btn("#a070c0","#fff"),fontSize:12}}>{t.llmConnect}</button>
             </div>
-          )}
-
-          {/* Status */}
+            <div style={{fontSize:11,color:"#aaa",marginTop:5}}>{t.llmOllamaHint}</div>
+          </div>}
           <div style={{display:"flex",alignItems:"center",gap:8,background:"#f8f8f8",borderRadius:8,padding:"8px 12px"}}>
-            <span style={{fontSize:16}}>{statusDot}</span>
-            <span style={{fontSize:13,color:statusColor,fontWeight:600}}>{t.llmStatus[status]}</span>
+            <span>{sd}</span><span style={{fontSize:13,color:sc,fontWeight:600}}>{t.llmStatus[status]}</span>
           </div>
-
-          {/* Model selector */}
-          <div>
-            <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:5}}>{t.llmModel}</div>
-            {models.length>0 ? (
-              <select value={model} onChange={e=>setModel(e.target.value)}
-                style={{width:"100%",border:"1.5px solid #ddd",borderRadius:7,padding:"7px 10px",fontSize:13,color:"#333",background:"#fff"}}>
-                {models.map(m=><option key={m} value={m}>{m}</option>)}
-              </select>
-            ) : (
-              <div style={{fontSize:12,color:"#aaa",fontStyle:"italic",padding:"6px 0"}}>
-                {provider==="ollama"?t.llmNoModels:t.llmApiKeyPlaceholder}
-              </div>
-            )}
-            {provider==="ollama"&&status==="ok"&&(
-              <button onClick={()=>testOllama(ollamaUrl)} style={{...S.btn("#f4f4f8","#555"),fontSize:11,marginTop:6}}>🔄 {t.llmRefresh}</button>
-            )}
+          <div><div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:5}}>{t.llmModel}</div>
+            {models.length>0
+              ?<select value={model} onChange={e=>setModel(e.target.value)} style={{width:"100%",border:"1.5px solid #ddd",borderRadius:7,padding:"7px 10px",fontSize:13,color:"#333",background:"#fff"}}>{models.map(m=><option key={m} value={m}>{m}</option>)}</select>
+              :<div style={{fontSize:12,color:"#aaa",fontStyle:"italic",padding:"6px 0"}}>{provider==="ollama"?t.llmNoModels:t.llmApiKeyPlaceholder}</div>}
           </div>
         </div>
-
         <div style={{padding:"12px 20px",borderTop:"1px solid #eee",display:"flex",gap:10,justifyContent:"flex-end"}}>
           <button onClick={onClose} style={S.btn("#eee","#555")}>{t.llmCancel}</button>
-          <button onClick={()=>onSave({provider,apiKey,ollamaUrl,model,availableModels:models})}
-            disabled={!model}
-            style={{...S.btn(!model?"#ccc":"#2a8a50","#fff"),opacity:!model?0.5:1}}>{t.llmSave}</button>
+          <button onClick={()=>onSave({provider,apiKey,ollamaUrl,model,availableModels:models})} disabled={!model} style={{...S.btn(!model?"#ccc":"#2a8a50","#fff"),opacity:!model?0.5:1}}>{t.llmSave}</button>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── Figure ───────────────────────────────────────────────────────────────────
-function Fig({x,y,color,emoji,frozen,style,small}) {
-  const sc=small?0.52:1,fc=frozen?"#bbb":color,skin=frozen?"#ddd":"#f5e0c0",hair="#3a2a1a";
-  if(style==="dot") return(<g transform={`translate(${x},${y}) scale(${sc})`}><circle cx={0} cy={0} r={8} fill={frozen?"#ccc":color} opacity={0.85}/><circle cx={0} cy={0} r={8} fill="none" stroke={frozen?"#aaa":color} strokeWidth={1.5}/><text x={0} y={2} textAnchor="middle" fontSize={8} dominantBaseline="middle">{emoji}</text></g>);
-  if(style==="minimal") return(<g transform={`translate(${x},${y}) scale(${sc})`}><line x1={-5} y1={14} x2={-7} y2={28} stroke={fc} strokeWidth={5} strokeLinecap="round"/><line x1={5} y1={14} x2={7} y2={28} stroke={fc} strokeWidth={5} strokeLinecap="round"/><rect x={-10} y={-4} width={20} height={20} rx={6} fill={fc}/><line x1={-10} y1={2} x2={-18} y2={14} stroke={fc} strokeWidth={5} strokeLinecap="round"/><line x1={10} y1={2} x2={18} y2={14} stroke={fc} strokeWidth={5} strokeLinecap="round"/><circle cx={0} cy={-20} r={13} fill={skin}/><circle cx={-4} cy={-21} r={2.5} fill="#222"/><circle cx={4} cy={-21} r={2.5} fill="#222"/><path d="M-4,-14 Q0,-11 4,-14" stroke="#888" strokeWidth={1.5} fill="none"/><text x={0} y={-40} textAnchor="middle" fontSize={14}>{emoji}</text></g>);
-  if(style==="detailed") return(<g transform={`translate(${x},${y}) scale(${sc})`}><rect x={-9} y={12} width={8} height={18} rx={3} fill="#4455aa"/><rect x={1} y={12} width={8} height={18} rx={3} fill="#4455aa"/><path d="M-10,30 Q-5,34 0,30" fill="#222"/><path d="M0,30 Q5,34 10,30" fill="#222"/><rect x={-11} y={-5} width={22} height={17} rx={5} fill={fc}/><rect x={-18} y={-4} width={8} height={16} rx={4} fill={fc}/><rect x={10} y={-4} width={8} height={16} rx={4} fill={fc}/><ellipse cx={0} cy={-22} rx={13} ry={14} fill={skin}/><path d="M-13,-26 Q0,-40 13,-26 Q10,-35 -10,-35 Z" fill={hair}/><circle cx={-4} cy={-23} r={1.5} fill="#333"/><circle cx={4} cy={-23} r={1.5} fill="#333"/><path d="M-4,-14 Q0,-10 4,-14" stroke="#a0705a" strokeWidth={1.5} fill="none"/><text x={0} y={-44} textAnchor="middle" fontSize={14}>{emoji}</text></g>);
-  return(<g transform={`translate(${x},${y}) scale(${sc})`}><rect x={-8} y={12} width={7} height={16} rx={3} fill={fc}/><rect x={1} y={12} width={7} height={16} rx={3} fill={fc}/><ellipse cx={-5} cy={28} rx={5} ry={3} fill="#333"/><ellipse cx={5} cy={28} rx={5} ry={3} fill="#333"/><rect x={-10} y={-4} width={20} height={18} rx={5} fill={fc}/><rect x={-4} y={-3} width={8} height={14} rx={2} fill="#fff"/><rect x={-16} y={-3} width={7} height={14} rx={3} fill={fc}/><rect x={9} y={-3} width={7} height={14} rx={3} fill={fc}/><circle cx={-13} cy={12} r={4} fill={skin}/><circle cx={13} cy={12} r={4} fill={skin}/><ellipse cx={0} cy={-20} rx={11} ry={12} fill={skin}/><ellipse cx={0} cy={-30} rx={11} ry={5} fill={hair}/><circle cx={-4} cy={-21} r={1} fill="#222"/><circle cx={4} cy={-21} r={1} fill="#222"/><path d="M-3,-15 Q0,-12 3,-15" stroke="#555" strokeWidth={1} fill="none"/><text x={0} y={-38} textAnchor="middle" fontSize={13}>{emoji}</text></g>);
-}
-
-// ─── Settings Modal ───────────────────────────────────────────────────────────
 function SettingsModal({agentDefs,onSave,onClose,t}) {
   const [defs,setDefs]=useState(agentDefs.map(d=>({...d})));
   const upd=(id,f,v)=>setDefs(p=>p.map(d=>d.id===id?{...d,[f]:v}:d));
   return(
     <div style={{position:"fixed",inset:0,background:"#00000066",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-      <div style={{background:"#fff",borderRadius:16,maxWidth:620,width:"100%",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 16px 64px #0005"}}>
+      <div style={{background:"#fff",borderRadius:16,maxWidth:640,width:"100%",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 16px 64px #0005"}}>
         <div style={{padding:"14px 20px",borderBottom:"1px solid #eee",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <b style={{fontSize:16,color:"#222"}}>{t.settingsTitle}</b>
+          <b style={{fontSize:16}}>{t.settingsTitle}</b>
           <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#888"}}>✕</button>
         </div>
         <div style={{padding:20,display:"flex",flexDirection:"column",gap:16}}>
@@ -426,8 +615,10 @@ function SettingsModal({agentDefs,onSave,onClose,t}) {
                   <input value={d.role} onChange={e=>upd(d.id,"role",e.target.value)} style={{flex:1,border:"1.5px solid #ddd",borderRadius:6,padding:"4px 8px",fontSize:12,color:"#555"}}/>
                 </div>
               </div>
-              <div style={{fontSize:11,color:"#888",marginBottom:4}}>{t.skillsLabel}</div>
-              <textarea value={d.skills} onChange={e=>upd(d.id,"skills",e.target.value)} style={{width:"100%",minHeight:56,border:"1.5px solid #e0e0e0",borderRadius:7,padding:"6px 8px",fontSize:12,resize:"vertical",boxSizing:"border-box",color:"#444",lineHeight:1.5}}/>
+              <div style={{fontSize:11,color:"#888",marginBottom:3}}>{t.skillsLabel}</div>
+              <textarea value={d.skills} onChange={e=>upd(d.id,"skills",e.target.value)} style={{width:"100%",minHeight:44,border:"1.5px solid #e0e0e0",borderRadius:7,padding:"5px 8px",fontSize:12,resize:"vertical",boxSizing:"border-box",color:"#444",lineHeight:1.5,marginBottom:8}}/>
+              <div style={{fontSize:11,color:"#888",marginBottom:3}}>{t.promptLabel}</div>
+              <textarea value={d.systemPrompt||""} onChange={e=>upd(d.id,"systemPrompt",e.target.value)} style={{width:"100%",minHeight:60,border:`1.5px solid ${d.color}66`,borderRadius:7,padding:"5px 8px",fontSize:12,resize:"vertical",boxSizing:"border-box",color:"#333",lineHeight:1.5,background:`${d.color}08`}}/>
             </div>
           ))}
         </div>
@@ -440,31 +631,30 @@ function SettingsModal({agentDefs,onSave,onClose,t}) {
   );
 }
 
-// ─── Archive Modal ────────────────────────────────────────────────────────────
 function ArchiveModal({files,onSave,onClose,t}) {
   const [items,setItems]=useState(files.map(f=>({...f})));
   const [newName,setNewName]=useState(""); const [newText,setNewText]=useState("");
   const [uploading,setUploading]=useState(false); const fileRef=useRef(null);
-  const addItem=()=>{ if(!newName.trim()||!newText.trim()) return; setItems(p=>[...p,{id:Date.now(),name:newName.trim(),text:newText.trim()}]); setNewName(""); setNewText(""); };
+  const addItem=()=>{if(!newName.trim()||!newText.trim())return;setItems(p=>[...p,{id:Date.now(),name:newName.trim(),text:newText.trim()}]);setNewName("");setNewText("");};
   const handleFile=async e=>{
-    const file=e.target.files?.[0]; if(!file) return; setUploading(true);
+    const file=e.target.files?.[0];if(!file)return;setUploading(true);
     try{
       if(file.type==="application/pdf"){
         const reader=new FileReader();
         reader.onload=async ev=>{
           const b64=ev.target.result.split(",")[1];
           const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:2000,messages:[{role:"user",content:[{type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}},{type:"text",text:"Extract all text from this PDF and return it as-is."}]}]})});
-          const d=await res.json(); const text=d.content?.[0]?.text||"(error)";
-          setItems(p=>[...p,{id:Date.now(),name:file.name,text}]); setUploading(false);
-        }; reader.readAsDataURL(file);
-      } else { const text=await file.text(); setItems(p=>[...p,{id:Date.now(),name:file.name,text}]); setUploading(false); }
-    } catch { setUploading(false); } e.target.value="";
+          const d=await res.json();const text=d.content?.[0]?.text||"(error)";
+          setItems(p=>[...p,{id:Date.now(),name:file.name,text}]);setUploading(false);
+        };reader.readAsDataURL(file);
+      }else{const text=await file.text();setItems(p=>[...p,{id:Date.now(),name:file.name,text}]);setUploading(false);}
+    }catch{setUploading(false);}e.target.value="";
   };
   return(
     <div style={{position:"fixed",inset:0,background:"#00000066",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
       <div style={{background:"#fff",borderRadius:16,maxWidth:640,width:"100%",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 16px 64px #0005"}}>
         <div style={{padding:"14px 20px",borderBottom:"1px solid #eee",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <b style={{fontSize:16,color:"#222"}}>{t.archiveModal}</b>
+          <b style={{fontSize:16}}>{t.archiveModal}</b>
           <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#888"}}>✕</button>
         </div>
         <div style={{padding:20,display:"flex",flexDirection:"column",gap:12}}>
@@ -476,7 +666,7 @@ function ArchiveModal({files,onSave,onClose,t}) {
                 <input value={f.name} onChange={e=>setItems(p=>p.map((x,j)=>j===i?{...x,name:e.target.value}:x))} style={{flex:1,border:"1.5px solid #c0a0d0",borderRadius:5,padding:"3px 8px",fontSize:12,fontWeight:700,color:"#6040a0"}}/>
                 <button onClick={()=>setItems(p=>p.filter((_,j)=>j!==i))} style={{...S.btn("#fee","#d04040"),fontSize:11,padding:"2px 8px"}}>✕</button>
               </div>
-              <textarea value={f.text} onChange={e=>setItems(p=>p.map((x,j)=>j===i?{...x,text:e.target.value}:x))} style={{width:"100%",minHeight:64,border:"1.5px solid #e0d0f0",borderRadius:6,padding:"5px 8px",fontSize:11,resize:"vertical",boxSizing:"border-box",color:"#444",lineHeight:1.5}}/>
+              <textarea value={f.text} onChange={e=>setItems(p=>p.map((x,j)=>j===i?{...x,text:e.target.value}:x))} style={{width:"100%",minHeight:56,border:"1.5px solid #e0d0f0",borderRadius:6,padding:"5px 8px",fontSize:11,resize:"vertical",boxSizing:"border-box",color:"#444",lineHeight:1.5}}/>
               <div style={{fontSize:10,color:"#aaa",marginTop:2}}>{f.text.length} {t.chars}</div>
             </div>
           ))}
@@ -488,7 +678,7 @@ function ArchiveModal({files,onSave,onClose,t}) {
           <div style={{borderTop:"1px dashed #ddd",paddingTop:12}}>
             <div style={{fontSize:12,fontWeight:700,color:"#888",marginBottom:8}}>{t.addManual}</div>
             <input value={newName} onChange={e=>setNewName(e.target.value)} placeholder={t.docName} style={{width:"100%",border:"1.5px solid #ddd",borderRadius:6,padding:"5px 8px",fontSize:12,marginBottom:6,boxSizing:"border-box",color:"#333"}}/>
-            <textarea value={newText} onChange={e=>setNewText(e.target.value)} placeholder={t.docContent} style={{width:"100%",minHeight:80,border:"1.5px solid #ddd",borderRadius:6,padding:"5px 8px",fontSize:12,resize:"vertical",boxSizing:"border-box",color:"#333",marginBottom:6}}/>
+            <textarea value={newText} onChange={e=>setNewText(e.target.value)} placeholder={t.docContent} style={{width:"100%",minHeight:72,border:"1.5px solid #ddd",borderRadius:6,padding:"5px 8px",fontSize:12,resize:"vertical",boxSizing:"border-box",color:"#333",marginBottom:6}}/>
             <button onClick={addItem} disabled={!newName.trim()||!newText.trim()} style={{...S.btn("#a070c0","#fff"),opacity:!newName.trim()||!newText.trim()?0.5:1}}>{t.addBtn}</button>
           </div>
         </div>
@@ -501,305 +691,675 @@ function ArchiveModal({files,onSave,onClose,t}) {
   );
 }
 
-const TOTAL_STEPS=4;
-const FIG_STYLES=[{id:"modern",label:"◼"},{id:"minimal",label:"🕺"},{id:"detailed",label:"🧑"},{id:"dot",label:"●"}];
+function PlanTable({stages,agentDefs,t,currentStageId}) {
+  return(
+    <div style={{overflowX:"auto",marginTop:8}}>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+        <thead>
+          <tr>{t.tableHeaders.map(h=><th key={h} style={{padding:"4px 8px",background:"#f0f4ff",border:"1px solid #dde",color:"#445",fontWeight:700,textAlign:"left"}}>{h}</th>)}</tr>
+        </thead>
+        <tbody>
+          {stages.map(s=>{
+            const def=agentDefs.find(d=>d.id===s.agentId);
+            const isCurrent=s.id===currentStageId;
+            const isDone=s.status==="done";
+            const isSkipped=s.status==="skipped";
+            return(
+              <tr key={s.id} style={{background:isCurrent?"#e8f0ff":isDone?"#f0fff4":isSkipped?"#fff8f0":"#fff"}}>
+                <td style={{padding:"4px 8px",border:"1px solid #eee",color:"#888",fontWeight:isCurrent?700:400}}>{s.step}</td>
+                <td style={{padding:"4px 8px",border:"1px solid #eee"}}>
+                  <span style={{color:def?.color,fontWeight:600}}>{def?.emoji} {def?.name}</span>
+                </td>
+                <td style={{padding:"4px 8px",border:"1px solid #eee",color:"#667"}}>
+                  {t.zones?.[s.zone]||s.zone}
+                </td>
+                <td style={{padding:"4px 8px",border:"1px solid #eee",color:"#555",maxWidth:120,wordBreak:"break-word"}}>
+                  {s.receiveDesc||"—"}
+                </td>
+                <td style={{padding:"4px 8px",border:"1px solid #eee",color:s.loop?"#c8860a":"#aaa"}}>
+                  {s.loop?`↩ ×${s.loop.max}`:"—"}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
-// ─── App ──────────────────────────────────────────────────────────────────────
+const FIG_STYLES=[{id:"modern",label:"◼"},{id:"minimal",label:"🕺"},{id:"dot",label:"●"}];
+
 export default function App() {
   const [lang,setLang]=useState(()=>loadLS("lang","en"));
-  const t=T[lang];
+  const t={...T[lang],lang};
 
-  // LLM config
-  const [llmCfg,setLlmCfg]=useState(()=>loadLS("llmCfg",{
-    provider:"anthropic", apiKey:"", ollamaUrl:"http://localhost:11434",
-    model:"claude-sonnet-4-20250514", availableModels:[]
-  }));
+  const [llmCfg,setLlmCfg]=useState(()=>loadLS("llmCfg",{provider:"anthropic",apiKey:"",ollamaUrl:"http://localhost:11434",model:"claude-sonnet-4-20250514",availableModels:[]}));
   const [showLLM,setShowLLM]=useState(false);
-
   const [figStyle,setFigStyle]=useState("modern");
   const [pattern,setPattern]=useState("supervisor");
-  const [phase,setPhase]=useState("cowork");
+  const [phase,setPhase]=useState("idle");
   const [goal,setGoal]=useState("");
   const [chatInput,setChatInput]=useState("");
+  const [showDetailedPlan,setShowDetailedPlan]=useState(false);
+  const [speed,setSpeed]=useState(3);
+  // Plan editing state
+  const [editingPlan,setEditingPlan]=useState(false);
+  const [planEditValue,setPlanEditValue]=useState("");
+
   const [agentDefs,setAgentDefs]=useState(()=>{
     const stored=loadLS("agentDefs",null);
     const il=loadLS("lang","en");
     if(!stored) return makeAgentDefs(il);
-    return stored.map(d=>({...d,name:T[il].agentNames[d.id]||d.name,role:T[il].agentRoles[d.id]||d.role}));
+    return stored.map(d=>({...d,
+      name:T[il].agentNames[d.id]||d.name,
+      role:T[il].agentRoles[d.id]||d.role,
+      systemPrompt:(d.systemPrompt??T[il].agentDefaultPrompts[d.id])||"",
+    }));
   });
-  const [agents,setAgents]=useState(()=>{
-    const stored=loadLS("agentDefs",null);
-    const il=loadLS("lang","en");
-    const defs=stored?stored.map(d=>({...d,name:T[il].agentNames[d.id]||d.name,role:T[il].agentRoles[d.id]||d.role})):makeAgentDefs(il);
-    return initAgents(defs);
+
+  const [agents,setAgents]=useState(()=>initAgents(makeAgentDefs(loadLS("lang","en"))));
+
+  const [systemState,setSystemState]=useState({
+    globalCtx:{ task:"", pattern:"supervisor", team:[], archiveList:[] },
+    sharedBoard:{},
+    inbox:{},
+    stages:[],
+    managerState:{ status:"idle", round:0, maxRounds:3 },
+    agentStates:{},
   });
-  const [step,setStep]=useState(0);
-  const [conns,setConns]=useState([]);
-  const [log,setLog]=useState([]);
-  const [frozen,setFrozen]=useState(null);
-  const [editBubble,setEditBubble]=useState("");
-  const [speed,setSpeed]=useState(3);
-  const [loading,setLoading]=useState(false);
-  const [labCards,setLabCards]=useState([]);
+
+  const [activeTeam,setActiveTeam]=useState([]);
+  const [planText,setPlanText]=useState("");
+  const [outputType,setOutputType]=useState("other");
+  const [currentStageId,setCurrentStageId]=useState(null);
+  const [arrows,setArrows]=useState([]);
   const [boardCards,setBoardCards]=useState([]);
   const [managerReport,setManagerReport]=useState("");
   const [showResult,setShowResult]=useState(false);
-  const [managerPlan,setManagerPlan]=useState("");
-  const [activeTeam,setActiveTeam]=useState([]);
-  const [outputType,setOutputType]=useState("other");
+  const [log,setLog]=useState([]);
+  const [loading,setLoading]=useState(false);
+  const [frozen,setFrozen]=useState(null);
+  const [editBubble,setEditBubble]=useState("");
   const [paused,setPaused]=useState(false);
   const [pauseInput,setPauseInput]=useState("");
   const [pauseLoading,setPauseLoading]=useState(false);
   const [showSettings,setShowSettings]=useState(false);
   const [showArchive,setShowArchive]=useState(false);
   const [archiveFiles,setArchiveFiles]=useState(()=>loadLS("archiveFiles",[]));
+  const [activeNow,setActiveNow]=useState([]);
 
-  const logRef=useRef(null),runRef=useRef(false),frozenRef=useRef(null),allStepDataRef=useRef([]);
+  const logRef=useRef(null);
+  const runRef=useRef(false);
+  const frozenRef=useRef(null);
   frozenRef.current=frozen;
+  const phaseRef=useRef(phase);
+  phaseRef.current=phase;
+  const systemStateRef=useRef(systemState);
+  systemStateRef.current=systemState;
 
-  useEffect(()=>{ if(logRef.current) logRef.current.scrollTop=logRef.current.scrollHeight; },[log]);
+  useEffect(()=>{if(logRef.current)logRef.current.scrollTop=logRef.current.scrollHeight;},[log]);
+
+  // Smooth movement — via Common Area as transit
   useEffect(()=>{
-    const iv=setInterval(()=>{ setAgents(prev=>prev.map(ag=>ag.status==="frozen"?ag:{...ag,x:ag.x+(ag.tx-ag.x)*0.09,y:ag.y+(ag.ty-ag.y)*0.09})); },40);
+    const iv=setInterval(()=>{
+      setAgents(prev=>prev.map(ag=>{
+        if(ag.agentStatus==="stopped") return ag;
+        const STEP=0.13;
+        if(ag.transitTo) {
+          // Phase 1: move to common seat
+          const seat=COMMON_SEATS[ag.id]||{x:80,y:120};
+          const dx=seat.x-ag.x, dy=seat.y-ag.y;
+          const dist=Math.sqrt(dx*dx+dy*dy);
+          if(dist<4) {
+            // Arrived at common seat — now head to final target
+            return {...ag, x:seat.x, y:seat.y, tx:ag.transitTo.x, ty:ag.transitTo.y, transitTo:null};
+          }
+          const nx=ag.x+dx*STEP, ny=ag.y+dy*STEP;
+          return {...ag, x:nx, y:ny, tx:seat.x, ty:seat.y};
+        }
+        // Phase 2 (or direct): move to tx/ty
+        const dx=ag.tx-ag.x, dy=ag.ty-ag.y;
+        const dist=Math.sqrt(dx*dx+dy*dy);
+        if(dist<1) return {...ag, x:ag.tx, y:ag.ty};
+        return {...ag, x:ag.x+dx*STEP, y:ag.y+dy*STEP};
+      }));
+    },40);
     return ()=>clearInterval(iv);
   },[]);
 
-  const addLog=msg=>setLog(l=>[...l.slice(-80),msg]);
-  const speedMs=[12000,7000,4000,2000,600][speed-1];
-  const pat=PATTERNS[pattern];
-  const ask=(sys,usr,maxTok)=>callLLM(llmCfg,sys,usr,maxTok);
+  const addLog=msg=>setLog(l=>[...l.slice(-150),msg]);
+  const speedDelays=[8000,4000,2000,800,100];
+  const speedMs=speedDelays[speed-1];
+  const ask=(sys,usr,maxTok,timeout)=>callLLM(llmCfg,sys,usr,maxTok,timeout);
 
-  const archiveCtx=archiveFiles.length>0?t.archiveCtxLabel+archiveFiles.map(f=>`[${f.name}]: ${f.text}`).join("\n\n"):"";
-  const patCtx=t.patternCtx[pattern]||"";
   const ZONES_T=Object.fromEntries(ZONE_KEYS.map(k=>([k,{...ZONE_BASE[k],label:t.zones[k]}])));
 
-  // connection status badge
-  const llmStatusDot = llmCfg.model
-    ? (llmCfg.provider==="ollama"?"🦙":"☁️")
-    : "⚠️";
-  const llmStatusLabel = llmCfg.model
-    ? `${llmCfg.provider==="anthropic"?"Anthropic":"Ollama"}: ${llmCfg.model.length>20?llmCfg.model.slice(0,20)+"…":llmCfg.model}`
-    : "No LLM";
-
-  async function runStep(s,currentGoal,currentAgents,team){
-    setLoading(true);
-    const isSolo=team.length===0;
-    const activeIds=pattern==="peer"?team:["manager",...team];
-    const teamStr=team.map(id=>{const d=agentDefs.find(x=>x.id===id);return `${d.name}(${d.role})`;}).join(", ");
-    const prevCtx=allStepDataRef.current.length>0?t.prevCtxLabel+allStepDataRef.current.slice(-3).join("\n")+"\n":"";
+  // Move agent to target zone, passing through common area first
+  const moveAgent=useCallback((agentId, targetZone, idx, total, newStatus)=>{
+    const targetPos = targetZone==="common"
+      ? (COMMON_SEATS[agentId]||{x:80,y:120})
+      : getZonePos(targetZone, idx, total);
 
     setAgents(prev=>prev.map(ag=>{
-      if(!activeIds.includes(ag.id)) return {...ag,zoneId:"common",bubble:"",status:"idle"};
-      const flowKey=ag.id==="manager"?(isSolo?"manager_solo":(pat.agentFlow.manager_team?"manager_team":"manager")):ag.id;
-      const flow=pat.agentFlow[flowKey]||pat.agentFlow[ag.id]||["common","lab","lab","lab","board"];
-      const zid=flow[Math.min(s,flow.length-1)];
-      const z=ZONE_BASE[zid]; let tx,ty;
-      if(zid==="lab"){
-        const labIds=activeIds.filter(id=>{const fk=id==="manager"?(isSolo?"manager_solo":"manager"):id;return(pat.agentFlow[fk]||pat.agentFlow[id]||[])[Math.min(s,4)]==="lab";});
-        const idx=labIds.indexOf(ag.id),cols=Math.min(labIds.length,4);
-        tx=ZONE_BASE.lab.x+30+(idx%cols)*110; ty=ZONE_BASE.lab.y+28+Math.floor(idx/cols)*60;
-      } else { tx=z.x+22+Math.random()*(z.w-44); ty=z.y+28+Math.random()*(z.h-56); }
-      return {...ag,tx,ty,zoneId:zid,status:ag.status==="frozen"?"frozen":"active"};
+      if(ag.id!==agentId) return ag;
+      const status = newStatus||ag.agentStatus;
+      if(targetZone==="common") {
+        return {...ag, tx:targetPos.x, ty:targetPos.y, zoneId:"common", agentStatus:status};
+      }
+      // Always go via common seat first as waypoint (transitTo)
+      const seat=COMMON_SEATS[agentId]||{x:80,y:120};
+      const dx=ag.x-seat.x, dy=ag.y-seat.y;
+      const distToCommon=Math.sqrt(dx*dx+dy*dy);
+      if(distToCommon < 20) {
+        // Already at common seat — go directly to target
+        return {...ag, tx:targetPos.x, ty:targetPos.y, transitTo:null, zoneId:targetZone, agentStatus:status};
+      }
+      // First move to common, then to target
+      return {...ag, tx:seat.x, ty:seat.y, transitTo:targetPos, zoneId:targetZone, agentStatus:status};
+    }));
+  },[]);
+
+  const parkIdleAgents=useCallback((exceptIds=[])=>{
+    setAgents(prev=>prev.map(ag=>{
+      if(exceptIds.includes(ag.id)) return ag;
+      const seat=COMMON_SEATS[ag.id]||{x:80,y:120};
+      return {...ag, tx:seat.x, ty:seat.y, zoneId:"common",
+              agentStatus: ag.agentStatus==="done"?"done":"waiting", bubble:""};
+    }));
+  },[]);
+
+  // ── Run a single stage ──────────────────────────────────────────────────────
+  const runStage = useCallback(async(stage, ss)=>{
+    setLoading(true);
+    setActiveNow([stage.agentId]);
+    setCurrentStageId(stage.id);
+
+    const def = agentDefs.find(d=>d.id===stage.agentId);
+    const zoneLabelMap = Object.fromEntries(ZONE_KEYS.map(k=>([k,T[lang].zones[k]])));
+    addLog(`▶ ${def?.emoji} ${def?.name} → ${zoneLabelMap[stage.zone]||stage.zone}`);
+
+    // Park everyone else
+    const seat_ids = [stage.agentId];
+    setAgents(prev=>prev.map(ag=>{
+      if(seat_ids.includes(ag.id)) return ag;
+      const seat=COMMON_SEATS[ag.id]||{x:80,y:120};
+      return {...ag, tx:seat.x, ty:seat.y, zoneId:"common",
+              agentStatus: ag.agentStatus==="done"?"done":"waiting", bubble:"", transitTo:null};
     }));
 
-    const results=await Promise.all(activeIds.map(async id=>{
-      const def=agentDefs.find(d=>d.id===id);
-      const flowKey=def.id==="manager"?(isSolo?"manager_solo":def.id):def.id;
-      const flow=pat.agentFlow[flowKey]||pat.agentFlow[def.id]||[];
-      const zid=flow[Math.min(s,flow.length-1)]||"lab";
-      const userP=t.zonePrompts[zid]||"What are you doing?";
-      const sysP=def.id==="manager"
-        ?(isSolo?t.sysManagerSolo(def.name,def.role,def.skills,currentGoal,prevCtx,archiveCtx,patCtx)
-          :t.sysManager(def.name,def.role,def.skills,teamStr,currentGoal,prevCtx,archiveCtx,patCtx))
-        :t.sysAgent(def.name,def.role,def.skills,currentGoal,prevCtx,archiveCtx,patCtx);
-      const ag=currentAgents.find(a=>a.id===id);
-      const extra=ag?.customInstruction?` Instruction: "${ag.customInstruction}".`:"";
-      const text=await ask(sysP+extra,userP);
-      return {id,text};
-    }));
+    // Move active agent directly (no transit — simpler and reliable)
+    const targetPos = stage.zone==="common"
+      ? (COMMON_SEATS[stage.agentId]||{x:80,y:120})
+      : getZonePos(stage.zone, 0, 1);
+    setAgents(prev=>prev.map(ag=>ag.id===stage.agentId
+      ? {...ag, tx:targetPos.x, ty:targetPos.y, zoneId:stage.zone, agentStatus:"working", transitTo:null}
+      : ag
+    ));
 
-    setAgents(prev=>prev.map(ag=>{const r=results.find(x=>x.id===ag.id);return r?{...ag,bubble:r.text,customInstruction:null}:ag;}));
-    results.forEach(r=>{const d=agentDefs.find(x=>x.id===r.id);addLog(`${d.emoji} ${d.name}: ${r.text}`);});
+    const {sys, user} = buildPrompt(stage.agentId, stage, ss, agentDefs, archiveFiles, t, lang);
 
-    if(s===2||s===3){
-      activeIds.forEach(id=>{
-        const fk=id==="manager"?(isSolo?"manager_solo":"manager"):id;
-        const flow=pat.agentFlow[fk]||pat.agentFlow[id]||[];
-        if(flow[Math.min(s,4)]==="lab"){
-          const r=results.find(x=>x.id===id),d=agentDefs.find(x=>x.id===id);
-          if(r&&r.text!=="...") setLabCards(prev=>[...prev,{agent:d.name,emoji:d.emoji,color:d.color,text:r.text,step:s}]);
-        }
-      });
+    const isCodeTask = /код|скрипт|code|script|python|javascript|программ/i.test(ss.globalCtx.task||"");
+    const maxTok = (stage.zone==="board" && isCodeTask) ? 1000 : 500;
+
+    let result = null;
+    let attempts = stage.attempts||0;
+    while(attempts < 3) {
+      const res = await ask(sys, user, maxTok, 25000);
+      if(res.ok) { result=res.text; break; }
+      attempts++;
+      addLog(t.timeoutLog(def?.name));
+      const manDef=agentDefs.find(d=>d.id==="manager");
+      addLog(t.managerLog(manDef?.name, `retrying ${def?.name} (attempt ${attempts})`));
+      if(attempts>=3) {
+        addLog(t.skipLog(def?.name));
+        result="[skipped due to timeout]";
+        setSystemState(prev=>{
+          const newStages=prev.stages.map(s=>s.id===stage.id?{...s,status:"skipped",attempts}:s);
+          return {...prev, stages:newStages};
+        });
+        break;
+      }
     }
-    allStepDataRef.current=[...allStepDataRef.current,results.map(r=>{const d=agentDefs.find(x=>x.id===r.id);return `${d.emoji}${d.name}(s${s+1}): ${r.text}`;}).join("\n")];
-    const pairs=[];
-    for(let i=0;i<3;i++){const a=activeIds[Math.floor(Math.random()*activeIds.length)],b=activeIds[Math.floor(Math.random()*activeIds.length)];if(a!==b)pairs.push([a,b]);}
-    setConns(pairs); setLoading(false);
-  }
 
+    const finalResult = result||"...";
+    setSystemState(prev=>{
+      const newBoard={...prev.sharedBoard, [stage.agentId]:{text:finalResult,round:prev.managerState.round,zone:stage.zone,timestamp:Date.now()}};
+      const newStages=prev.stages.map(s=>s.id===stage.id?{...s,status:"done",attempts}:s);
+      return {...prev, sharedBoard:newBoard, stages:newStages};
+    });
+
+    setAgents(prev=>prev.map(ag=>ag.id===stage.agentId?{...ag,bubble:finalResult,agentStatus:"done"}:ag));
+    addLog(`${def?.emoji} ${def?.name}: ${finalResult}`);
+
+    // Arrow to next agent
+    const updatedSS = systemStateRef.current;
+    const nextStage = updatedSS.stages.find(s=>s.dependsOn.includes(stage.id)&&s.status==="pending");
+    if(nextStage&&nextStage.agentId!==stage.agentId) {
+      const nextDef=agentDefs.find(d=>d.id===nextStage.agentId);
+      setArrows([{from:stage.agentId,to:nextStage.agentId}]);
+      addLog(t.handoff(def?.name, nextDef?.name));
+      setTimeout(()=>setArrows([]), Math.max(speedMs*0.6, 800));
+    }
+
+    // After done: move back to common
+    const doneSeat = COMMON_SEATS[stage.agentId]||{x:80,y:120};
+    if(stage.zone==="board") {
+      setAgents(prev=>prev.map(ag=>ag.id===stage.agentId?{...ag,agentStatus:"done"}:ag));
+    } else {
+      setAgents(prev=>prev.map(ag=>ag.id===stage.agentId
+        ? {...ag, tx:doneSeat.x, ty:doneSeat.y, zoneId:"common", agentStatus:"done", transitTo:null}
+        : ag
+      ));
+    }
+
+    setActiveNow([]);
+    setLoading(false);
+  },[agentDefs,archiveFiles,t,lang,pattern,speedMs,ZONES_T,moveAgent,parkIdleAgents]);
+
+  // ── Manager replan ──────────────────────────────────────────────────────────
+  const doReplan = useCallback(async(ss, currentGoal)=>{
+    setPhase("replanning");
+    addLog(t.replanLog);
+    const manDef=agentDefs.find(d=>d.id==="manager");
+    const teamStr=activeTeam.map(id=>{const d=agentDefs.find(x=>x.id===id);return `${d?.name}(${d?.role})`;}).join(", ");
+    const boardText=Object.entries(ss.sharedBoard).map(([id,v])=>{const d=agentDefs.find(x=>x.id===id);return `${d?.emoji} ${d?.name}: ${v.text}`;}).join("\n");
+    const inboxText=Object.entries(ss.inbox[manDef?.id]||{}).map(([,v])=>typeof v==="object"?JSON.stringify(v):v).join("\n");
+
+    const {ok,text}=await ask(
+      t.replanSys(manDef?.name,manDef?.role,teamStr),
+      t.replanUser(currentGoal,boardText,inboxText),
+      400,15000
+    );
+
+    let ready=false, newInstructions={};
+    if(ok){
+      try{
+        const parsed=JSON.parse(text.replace(/```json|```/g,"").trim());
+        ready=parsed.ready===true;
+        newInstructions=parsed.next_instructions||{};
+        if(parsed.assessment) addLog(t.managerLog(manDef?.name,parsed.assessment));
+      }catch{ ready=ss.managerState.round>=ss.managerState.maxRounds; }
+    } else {
+      ready=ss.managerState.round>=ss.managerState.maxRounds;
+    }
+
+    if(ready || ss.managerState.round>=ss.managerState.maxRounds) return "finalize";
+
+    setSystemState(prev=>{
+      const newInbox={...prev.inbox};
+      Object.entries(newInstructions).forEach(([id,txt])=>{
+        newInbox[id]=[...(newInbox[id]||[]),{from:"manager",type:"task",text:txt,round:prev.managerState.round+1}];
+      });
+      const newStages=prev.stages.map(s=>{
+        if(s.status==="done"&&newInstructions[s.agentId]) return {...s,status:"pending",attempts:0};
+        return s;
+      });
+      return {...prev, inbox:newInbox, stages:newStages, managerState:{...prev.managerState,round:prev.managerState.round+1}};
+    });
+    return "continue";
+  },[agentDefs,activeTeam,t,ask]);
+
+  // ── Main runner ─────────────────────────────────────────────────────────────
   useEffect(()=>{
     if(phase!=="running"||loading||frozenRef.current||paused||runRef.current) return;
-    const delay=step===0?100:speedMs;
-    const timer=setTimeout(()=>{
-      if(frozenRef.current||paused) return;
-      runRef.current=true;
-      if(step>TOTAL_STEPS){
-        setPhase("finalizing"); setLoading(true);
-        const isSolo=activeTeam.length===0;
-        const summary=allStepDataRef.current.join("\n");
-        const managerDef=agentDefs.find(d=>d.id==="manager");
-        const teamStr=isSolo?managerDef.name:activeTeam.map(id=>{const d=agentDefs.find(x=>x.id===id);return `${d.name}(${d.role})`;}).join(", ");
-        const outFmt=OUT_PROMPTS[outputType]||OUT_PROMPTS.other;
-        Promise.all([
-          ask("Return ONLY valid JSON without extra text.",`Task: "${goal}". Team work:\n${summary}${archiveCtx}\n\nResponse format: ${outFmt}`,1600),
-          ask(t.reportSys(managerDef.name,teamStr,t.patternNames[pattern]),t.reportUser(goal,summary),600),
-        ]).then(([contentRaw,report])=>{
-          try{
-            const parsed=JSON.parse(contentRaw.replace(/```json|```/g,"").trim());
-            if(outputType==="content_pack"&&parsed.posts){
-              setBoardCards(parsed.posts);
-              if(parsed.headline) setLabCards(prev=>[...prev,{agent:agentDefs.find(d=>d.id==="writer")?.name||"Writer",emoji:"✍️",color:"#7a2a9a",text:`📌 ${parsed.headline}\n💬 ${parsed.key_message}`,step:4}]);
-            } else {
-              setBoardCards([{platform:parsed.title||"Result",text:"__parsed__",parsed}]);
-              const preview=parsed.summary||parsed.key_message||parsed.conclusion||"Done!";
-              setLabCards(prev=>[...prev,{agent:agentDefs.find(d=>d.id==="writer")?.name||"Writer",emoji:"✍️",color:"#7a2a9a",text:preview,step:4}]);
-            }
-          } catch { setBoardCards([{platform:"Result",text:contentRaw}]); }
-          setManagerReport(report); setLoading(false); setPhase("done"); setShowResult(true); runRef.current=false;
-        });
-        return;
-      }
-      setAgents(curr=>{
-        runStep(step,goal,curr,activeTeam).catch(console.error).finally(()=>{setStep(s=>s+1);runRef.current=false;});
-        return curr;
-      });
-    },delay);
-    return ()=>clearTimeout(timer);
-  // eslint-disable-next-line
-  },[phase,step,loading,frozen,speedMs,paused,activeTeam]);
+    const ss=systemStateRef.current;
+    const stages=ss.stages;
 
-  const handleSendGoal=async()=>{
-    const g=chatInput.trim(); if(!g||loading) return;
-    runRef.current=false; allStepDataRef.current=[];
-    setAgents(initAgents(agentDefs)); setStep(0); setConns([]);
-    setLabCards([]); setBoardCards([]); setManagerReport("");
-    setShowResult(false); setActiveTeam([]); setOutputType("other");
-    setGoal(g); setChatInput(""); setLoading(true);
-    addLog(t.goalLog(g)); addLog(t.patternLog(t.patternNames[pattern]));
-    if(archiveFiles.length>0) addLog(t.archiveLog(archiveFiles.length));
-    const managerDef=agentDefs.find(d=>d.id==="manager");
-    const allRoles=agentDefs.filter(d=>d.id!=="manager").map(d=>`${d.id}=${d.name}(${d.role}: ${(d.skills||"").slice(0,60)})`).join(", ");
-    const raw=await ask(t.planPromptSys(managerDef.name,managerDef.role,allRoles),t.planPromptUser(g,t.patternNames[pattern],t.patternDesc[pattern],archiveCtx),500);
-    let plan=g,team=[],outType="other";
-    try{
-      const parsed=JSON.parse(raw.replace(/```json|```/g,"").trim());
-      if(parsed.plan) plan=parsed.plan;
-      if(parsed.output_type) outType=parsed.output_type;
-      if(parsed.output_description) addLog(t.resultLog(parsed.output_description));
-      if(Array.isArray(parsed.team)) team=parsed.team.filter(id=>agentDefs.find(d=>d.id===id&&d.id!=="manager"));
-    } catch {}
-    setOutputType(outType); setActiveTeam(team); setManagerPlan(plan);
-    setAgents(prev=>prev.map(ag=>ag.id==="manager"?{...ag,bubble:plan}:ag));
-    addLog(t.managerLog(managerDef.name,plan));
-    addLog(t.teamLog(team.map(id=>agentDefs.find(d=>d.id===id)?.name).filter(Boolean).join(", ")||"—"));
-    setLoading(false); setPhase("team");
+    const nextStage=stages.find(s=>{
+      if(s.status!=="pending") return false;
+      return s.dependsOn.every(depId=>{
+        const dep=stages.find(x=>x.id===depId);
+        return dep?.status==="done"||dep?.status==="skipped";
+      });
+    });
+
+    if(!nextStage) {
+      const allDone=stages.every(s=>s.status==="done"||s.status==="skipped");
+      if(allDone && stages.length > 0) {
+        setPhase("finalizing");
+        doFinalize(ss);
+      }
+      return;
+    }
+
+    runRef.current=true;
+    runStage(nextStage, systemStateRef.current)
+      .then(async()=>{
+        const updatedSS=systemStateRef.current;
+        const doneSS=updatedSS.stages;
+        const allDoneNow=doneSS.every(s=>s.status==="done"||s.status==="skipped");
+        if(allDoneNow) {
+          setPhase("finalizing");
+          doFinalize(updatedSS);
+        } else {
+          const criticStage=doneSS.find(s=>s.agentId==="critic"&&s.status==="done");
+          if(criticStage) {
+            const criticText=(updatedSS.sharedBoard["critic"]||{}).text||"";
+            const negSignals=["not approved","rejected","fail","poor","missing","incomplete","rework","rewrite","недостаточно","не соответствует","плохо","переделать","отклонено"];
+            const needsReplan=negSignals.some(s=>criticText.toLowerCase().includes(s));
+            if(needsReplan&&updatedSS.managerState.round<updatedSS.managerState.maxRounds) {
+              const decision=await doReplan(updatedSS,goal);
+              if(decision==="finalize") { setPhase("finalizing"); doFinalize(systemStateRef.current); }
+              else setPhase("running");
+            }
+          }
+        }
+      })
+      .catch(console.error)
+      .finally(()=>{ runRef.current=false; });
+  },[phase,loading,frozen,speedMs,paused,currentStageId,runStage,doReplan]);
+
+  // ── Finalize ────────────────────────────────────────────────────────────────
+  const doFinalize=async(ss)=>{
+    setLoading(true);
+    const manDef=agentDefs.find(d=>d.id==="manager");
+    const boardText=Object.entries(ss.sharedBoard)
+      .filter(([,v])=>v?.text&&!v.text.includes("skipped"))
+      .map(([id,v])=>{const d=agentDefs.find(x=>x.id===id);return `${d?.emoji} ${d?.name} [${v.zone}]: ${v.text}`;})
+      .join("\n\n");
+
+    const outFmt=OUT_PROMPTS[outputType]||OUT_PROMPTS.other;
+
+    const isCodeOutput = outputType==="code";
+    const finalMaxTok = isCodeOutput ? 1500 : 800;
+    const codeFormat = `{"language":"python","description":"one sentence","code":"FULL EXECUTABLE CODE HERE — all imports, classes, functions, no placeholders","usage":"how to run"}`;
+    const outFmtFinal = isCodeOutput ? codeFormat : (OUT_PROMPTS[outputType]||OUT_PROMPTS.other);
+    const finalPrompt = isCodeOutput
+      ? `Task: "${goal}".\n\nTeam results:\n${boardText}\n\nReturn ONLY this JSON with no markdown, no backticks, no extra text:\n${codeFormat}\n\nThe "code" field MUST contain complete runnable Python code, not a description.`
+      : `Task: "${goal}". Team results:\n${boardText}\n\nResponse format: ${outFmtFinal}`;
+
+    const {ok:ok1,text:contentRaw}=await ask(
+      "You are a code writer. Return ONLY valid JSON. The 'code' field must contain complete executable code with no placeholders.",
+      finalPrompt,
+      finalMaxTok, 30000
+    );
+
+    if(ok1) {
+      try{
+        const cleaned = contentRaw.replace(/```json\s*/g,"").replace(/```\s*/g,"").trim();
+        const parsed=JSON.parse(cleaned);
+        // If we expected code but got sections, extract code from content
+        if(isCodeOutput && !parsed.code && parsed.sections) {
+          const codeSection = parsed.sections.find(s=>s.content && s.content.includes("import "));
+          parsed.code = codeSection ? codeSection.content : boardText;
+          parsed.language = "python";
+        }
+        if(outputType==="content_pack"&&parsed.posts) setBoardCards(parsed.posts);
+        else setBoardCards([{platform:parsed.title||"Result",text:"__parsed__",parsed}]);
+      }catch{ setBoardCards([{platform:"Result",text:contentRaw}]); }
+    } else {
+      setBoardCards([{platform:"Result",text:boardText}]);
+    }
+
+    setLoading(false);
+    setPhase("done");
+    setShowResult(true);
+
+    ask(
+      t.reportSys(manDef?.name,manDef?.role),
+      t.reportUser(goal,boardText),
+      500, 20000
+    ).then(({text})=>{if(text) setManagerReport(text);});
   };
 
-  const handleAcceptTeam=()=>{ runRef.current=false; allStepDataRef.current=[]; setLabCards([]); setBoardCards([]); setManagerReport(""); setStep(0); addLog(t.startLog); setPhase("running"); };
-  const handleAgentClick=ag=>{ if(phase!=="running"||loading||frozen||!activeTeam.includes(ag.id)) return; setFrozen(ag.id); setEditBubble(ag.bubble); setAgents(prev=>prev.map(a=>a.id===ag.id?{...a,status:"frozen"}:a)); addLog(t.frozenLog(ag.name)); };
-  const handleSendInstruction=()=>{ if(!editBubble.trim()) return; const name=agents.find(a=>a.id===frozen)?.name; setAgents(prev=>prev.map(a=>a.id===frozen?{...a,bubble:editBubble,status:"active",customInstruction:editBubble}:a)); addLog(t.instructionLog(name,editBubble)); setFrozen(null); setEditBubble(""); };
+  // ── Handle send goal ────────────────────────────────────────────────────────
+  const handleSendGoal=async()=>{
+    const g=chatInput.trim(); if(!g||loading) return;
+    runRef.current=false;
+    setPhase("planning"); setGoal(g); setChatInput("");
+    setLoading(true); setActiveNow([]); setArrows([]); setLog([]);
+    setBoardCards([]); setManagerReport(""); setShowResult(false);
+    setCurrentStageId(null); setActiveTeam([]);
+    setEditingPlan(false);
+
+    const freshAgents = initAgents(agentDefs);
+    setAgents(freshAgents);
+
+    addLog(t.goalLog(g)); addLog(t.patternLog(t.patternNames[pattern]));
+    if(archiveFiles.length>0) addLog(t.archiveLog(archiveFiles.length));
+
+    const manDef=agentDefs.find(d=>d.id==="manager");
+    // Move manager after agents are initialized — set directly on freshAgents target
+    const managerTarget = getZonePos("manager", 0, 1);
+    setAgents(prev=>prev.map(ag=>ag.id==="manager"
+      ? {...ag, tx:managerTarget.x, ty:managerTarget.y, zoneId:"manager", agentStatus:"working"}
+      : ag
+    ));
+
+    const allRoles=agentDefs.filter(d=>d.id!=="manager")
+      .map(d=>`${d.id}=${d.name}(${d.role}: ${(d.skills||"").slice(0,50)})`)
+      .join(", ");
+    const archiveTitles=archiveFiles.length>0?archiveFiles.map(f=>f.name).join(", "):"";
+
+    const {ok,text}=await ask(
+      t.planPromptSys(manDef.name,manDef.role,allRoles,archiveTitles),
+      t.planPromptUser(g,t.patternNames[pattern],t.patternDesc[pattern]),
+      600, 15000
+    );
+
+    let team=[], outType="other", instructions={}, planDescription=g;
+    if(ok){
+      try{
+        const parsed=JSON.parse(text.replace(/```json|```/g,"").trim());
+        if(parsed.plan) planDescription=parsed.plan;
+        if(parsed.output_type) outType=parsed.output_type;
+        if(parsed.output_description) addLog(t.resultLog(parsed.output_description));
+        if(Array.isArray(parsed.team)) team=parsed.team.filter(id=>agentDefs.find(d=>d.id===id&&d.id!=="manager"));
+        if(parsed.instructions) instructions=parsed.instructions;
+      }catch{}
+    } else {
+      addLog(t.timeoutLog(manDef.name));
+      team=agentDefs.filter(d=>d.id!=="manager").map(d=>d.id);
+      planDescription=g;
+    }
+
+    setOutputType(outType);
+    setActiveTeam(team);
+    setPlanText(planDescription);
+    setPlanEditValue(planDescription);
+    addLog(t.managerLog(manDef.name, planDescription));
+    addLog(t.teamLog(team.map(id=>agentDefs.find(d=>d.id===id)?.name).filter(Boolean).join(", ")||"—"));
+
+    const builtStages=buildPlan(pattern,team,instructions,archiveFiles.length>0,t);
+
+    const inboxInit={};
+    team.forEach(id=>{
+      if(instructions[id]) inboxInit[id]=[{from:"manager",type:"task",text:instructions[id],round:0}];
+    });
+
+    setSystemState({
+      globalCtx:{task:g,pattern,team,archiveList:archiveFiles.map(f=>f.name)},
+      sharedBoard:{},
+      inbox:inboxInit,
+      stages:builtStages,
+      managerState:{status:"dispatching",round:0,maxRounds:3},
+      agentStates:{},
+    });
+
+    setAgents(prev=>prev.map(ag=>ag.id==="manager"?{...ag,bubble:planDescription}:ag));
+    // Return manager to common seat
+    const manSeat = COMMON_SEATS["manager"]||{x:55,y:90};
+    setAgents(prev=>prev.map(ag=>ag.id==="manager"
+      ? {...ag, tx:manSeat.x, ty:manSeat.y, zoneId:"common", agentStatus:"waiting"}
+      : ag
+    ));
+
+    setLoading(false);
+    setPhase("team");
+  };
+
+  const handleAcceptTeam=()=>{
+    runRef.current=false;
+    const instructions=Object.fromEntries(
+      Object.entries(systemState.inbox).map(([id,msgs])=>[id,Array.isArray(msgs)?(msgs[0]?.text||""):(msgs||"")])
+    );
+    const builtStages=buildPlan(pattern,activeTeam,instructions,archiveFiles.length>0,t);
+    // Collect all unique non-manager agent ids actually present in stages
+    const stageAgents=[...new Set(builtStages.map(s=>s.agentId).filter(id=>id!=="manager"))];
+    // Merge with activeTeam so no one is missed
+    const mergedTeam=[...new Set([...activeTeam,...stageAgents])];
+    setActiveTeam(mergedTeam);
+    setSystemState(prev=>({...prev,stages:builtStages,
+      globalCtx:{...prev.globalCtx,task:planText,team:mergedTeam},
+      managerState:{...prev.managerState,status:"dispatching"}}));
+    addLog(t.startLog);
+    setPhase("running");
+  };
+
+  // Plan text editing handlers
+  const handleEditPlan=()=>{
+    setPlanEditValue(planText);
+    setEditingPlan(true);
+  };
+  const handleSavePlan=()=>{
+    const newPlan=planEditValue.trim()||planText;
+    setPlanText(newPlan);
+    setAgents(prev=>prev.map(ag=>ag.id==="manager"?{...ag,bubble:newPlan}:ag));
+    addLog(`✏️ ${t.planEdited}`);
+    setEditingPlan(false);
+  };
+
+  const handleAgentClick=ag=>{
+    if(phase!=="running"||loading||frozen||(!activeTeam.includes(ag.id)&&ag.id!=="manager")) return;
+    setFrozen(ag.id); setEditBubble(ag.bubble);
+    setAgents(prev=>prev.map(a=>a.id===ag.id?{...a,agentStatus:"stopped"}:a));
+    addLog(t.frozenLog(ag.name));
+  };
+  const handleSendInstruction=()=>{
+    if(!editBubble.trim()) return;
+    const name=agents.find(a=>a.id===frozen)?.name;
+    setAgents(prev=>prev.map(a=>a.id===frozen?{...a,bubble:editBubble,agentStatus:"waiting"}:a));
+    setSystemState(prev=>{
+      const newInbox={...prev.inbox};
+      newInbox[frozen]=[...(newInbox[frozen]||[]),{from:"user",type:"task",text:editBubble,round:prev.managerState.round}];
+      return {...prev,inbox:newInbox};
+    });
+    addLog(t.instructionLog(name,editBubble)); setFrozen(null); setEditBubble("");
+  };
   const handlePause=()=>{setPaused(true);setPauseInput("");};
   const handleResume=()=>{setPaused(false);setPauseInput("");};
   const handlePauseInstruction=async()=>{
     if(!pauseInput.trim()) return; setPauseLoading(true); addLog(t.correctionLog(pauseInput));
-    const managerDef=agentDefs.find(d=>d.id==="manager");
-    const teamStr=activeTeam.map(id=>{const d=agentDefs.find(x=>x.id===id);return `${d.name}(${d.role})`;}).join(", ");
-    const reply=await ask(t.correctionSys(managerDef.name,managerDef.role,teamStr,goal),t.correctionUser(pauseInput));
-    setAgents(prev=>prev.map(ag=>ag.id==="manager"?{...ag,bubble:reply}:{...ag,customInstruction:pauseInput}));
-    addLog(t.managerLog(managerDef.name,reply)); setPauseLoading(false); setPaused(false); setPauseInput("");
+    const manDef=agentDefs.find(d=>d.id==="manager");
+    const teamStr=activeTeam.map(id=>{const d=agentDefs.find(x=>x.id===id);return `${d?.name}(${d?.role})`;}).join(", ");
+    const {text}=await ask(t.correctionSys(manDef?.name,manDef?.role,teamStr,goal),t.correctionUser(pauseInput),400,15000);
+    if(text) {
+      setAgents(prev=>prev.map(ag=>ag.id==="manager"?{...ag,bubble:text}:ag));
+      addLog(t.managerLog(manDef?.name,text));
+      setSystemState(prev=>{
+        const newInbox={...prev.inbox};
+        activeTeam.forEach(id=>{newInbox[id]=[...(newInbox[id]||[]),{from:"manager",type:"correction",text:pauseInput,round:prev.managerState.round}];});
+        return {...prev,inbox:newInbox};
+      });
+    }
+    setPauseLoading(false); setPaused(false); setPauseInput("");
   };
-  const handleReset=()=>{ runRef.current=false; allStepDataRef.current=[]; setPhase("cowork"); setGoal(""); setChatInput(""); setAgents(initAgents(agentDefs)); setStep(0); setConns([]); setLog([]); setFrozen(null); setLabCards([]); setBoardCards([]); setManagerReport(""); setLoading(false); setShowResult(false); setManagerPlan(""); setActiveTeam([]); setOutputType("other"); setPaused(false); setPauseInput(""); };
+  const handleReset=()=>{
+    runRef.current=false;
+    setPhase("idle"); setGoal(""); setChatInput("");
+    setAgents(initAgents(agentDefs));
+    setSystemState({globalCtx:{task:"",pattern:"supervisor",team:[],archiveList:[]},sharedBoard:{},inbox:{},stages:[],managerState:{status:"idle",round:0,maxRounds:3},agentStates:{}});
+    setLog([]); setFrozen(null); setBoardCards([]); setManagerReport("");
+    setLoading(false); setShowResult(false); setActiveTeam([]);
+    setOutputType("other"); setPaused(false); setPauseInput("");
+    setActiveNow([]); setArrows([]); setCurrentStageId(null);
+    setEditingPlan(false);
+  };
   const handleSaveSettings=defs=>{ setAgentDefs(defs); saveLS("agentDefs",defs); setAgents(initAgents(defs)); setShowSettings(false); addLog(t.agentsSaved); };
   const handleSaveArchive=files=>{ setArchiveFiles(files); saveLS("archiveFiles",files); setShowArchive(false); addLog(t.archiveSaved(files.length)); };
   const handleSaveLLM=cfg=>{ setLlmCfg(cfg); saveLS("llmCfg",cfg); setShowLLM(false); addLog(`🔌 LLM: ${cfg.provider} / ${cfg.model}`); };
-  const handleLangChange=l=>{ setLang(l); saveLS("lang",l); setAgentDefs(prev=>{const u=prev.map(d=>({...d,name:T[l].agentNames[d.id]||d.name,role:T[l].agentRoles[d.id]||d.role})); saveLS("agentDefs",u); return u;}); setAgents(prev=>prev.map(ag=>({...ag,name:T[l].agentNames[ag.id]||ag.name,role:T[l].agentRoles[ag.id]||ag.role}))); };
-
-  const renderResult=(c,i)=>{
-    if(c.text==="__parsed__"&&c.parsed){const p=c.parsed;return(<div key={i} style={{border:"2px solid #40a060",borderRadius:10,padding:"14px 16px",background:"#fafff8",marginBottom:10}}>{p.title&&<div style={{fontWeight:700,fontSize:15,color:"#2a8a50",marginBottom:10}}>{p.title}</div>}{p.goal&&<div style={{fontSize:13,color:"#555",marginBottom:8}}>🎯 {p.goal}</div>}{p.sections?.map((s,j)=>(<div key={j} style={{marginBottom:10}}><div style={{fontWeight:700,fontSize:13,color:"#333",marginBottom:3}}>{s.heading}</div><div style={{fontSize:13,color:"#444",lineHeight:1.7,whiteSpace:"pre-line"}}>{s.content}</div></div>))}{p.code&&<><div style={{fontSize:12,color:"#888",marginBottom:4}}>{p.language} — {p.description}</div><pre style={{background:"#1e1e2e",color:"#cdd6f4",borderRadius:8,padding:12,fontSize:12,overflowX:"auto",lineHeight:1.6}}>{p.code}</pre>{p.usage&&<div style={{fontSize:12,color:"#666",marginTop:6}}>💡 {p.usage}</div>}</>}{p.findings?.map((f,j)=>(<div key={j} style={{marginBottom:8,paddingLeft:10,borderLeft:"3px solid #40a060"}}><div style={{fontWeight:700,fontSize:13,color:"#333"}}>{f.point}</div><div style={{fontSize:12,color:"#555",lineHeight:1.6}}>{f.detail}</div></div>))}{p.steps?.map((s,j)=>(<div key={j} style={{marginBottom:8,background:"#f0fff4",borderRadius:7,padding:"8px 10px"}}><div style={{fontWeight:700,fontSize:12,color:"#2a8a50"}}>{s.phase}</div><div style={{fontSize:12,color:"#444",lineHeight:1.6}}>{s.actions}</div></div>))}{p.key_facts&&<><div style={{fontWeight:700,fontSize:12,color:"#555",marginBottom:4}}>{t.keyFacts}</div><ul style={{margin:"0 0 10px 16px",padding:0}}>{p.key_facts.map((f,j)=><li key={j} style={{fontSize:12,color:"#444",marginBottom:3}}>{f}</li>)}</ul></>}{p.insights?.map((ins,j)=>(<div key={j} style={{marginBottom:8}}><div style={{fontWeight:700,fontSize:13,color:"#333"}}>{ins.topic}</div><div style={{fontSize:12,color:"#555",lineHeight:1.6}}>{ins.detail}</div></div>))}{p.slides?.map((s,j)=>(<div key={j} style={{marginBottom:8,background:"#f8f0ff",borderRadius:7,padding:"8px 10px",border:"1px solid #c0a0e0"}}><div style={{fontWeight:700,fontSize:13,color:"#7a2a9a",marginBottom:3}}>{t.slide} {j+1}: {s.title}</div><div style={{fontSize:12,color:"#444",lineHeight:1.6}}>{s.content}</div></div>))}{p.recommendations&&<><div style={{fontWeight:700,fontSize:12,color:"#555",marginTop:8,marginBottom:4}}>{t.recommendations}</div><ul style={{margin:"0 0 8px 16px",padding:0}}>{p.recommendations.map((r,j)=><li key={j} style={{fontSize:12,color:"#444",marginBottom:3}}>{r}</li>)}</ul></>}{p.summary&&<div style={{fontSize:13,color:"#444",lineHeight:1.7,marginTop:8,padding:"8px 10px",background:"#f0fff4",borderRadius:7}}><b>{t.summary}:</b> {p.summary}</div>}{p.conclusion&&<div style={{fontSize:13,color:"#444",lineHeight:1.7,marginTop:8,padding:"8px 10px",background:"#f0fff4",borderRadius:7}}><b>{t.conclusion}:</b> {p.conclusion}</div>}{p.risks&&<div style={{fontSize:12,color:"#a04040",marginTop:6}}>{t.risks}: {p.risks}</div>}{p.success_metrics&&<div style={{fontSize:12,color:"#2a8a50",marginTop:4}}>{t.metrics}: {p.success_metrics}</div>}{p.key_message&&<div style={{fontSize:13,fontWeight:700,color:"#2a8a50",marginTop:8}}>💬 {p.key_message}</div>}<button onClick={()=>navigator.clipboard?.writeText(JSON.stringify(p,null,2))} style={{marginTop:10,...S.btn("#f0f4ff","#4060c0"),fontSize:11}}>{t.copyJson}</button></div>);}
-    return(<div key={i} style={{border:`2px solid ${PLATFORM_COLORS[c.platform]||"#888"}`,borderRadius:10,padding:"12px 14px",background:"#fafafa",marginBottom:10}}><div style={{fontWeight:700,color:PLATFORM_COLORS[c.platform]||"#555",marginBottom:6,fontSize:14}}>{c.platform}</div><div style={{fontSize:13,color:"#333",lineHeight:1.7,whiteSpace:"pre-line"}}>{c.text}</div>{c.hashtags&&<div style={{color:"#888",fontSize:12,marginTop:5}}>{c.hashtags}</div>}<button onClick={()=>navigator.clipboard?.writeText(c.text+(c.hashtags?"\n"+c.hashtags:""))} style={{marginTop:8,...S.btn("#f0f4ff","#4060c0"),fontSize:11}}>{t.copy}</button></div>);
+  const handleLangChange=l=>{
+    setLang(l); saveLS("lang",l);
+    setAgentDefs(prev=>{
+      const u=prev.map(d=>({...d,name:T[l].agentNames[d.id]||d.name,role:T[l].agentRoles[d.id]||d.role}));
+      saveLS("agentDefs",u); return u;
+    });
+    setAgents(prev=>prev.map(ag=>({...ag,name:T[l].agentNames[ag.id]||ag.name,role:T[l].agentRoles[ag.id]||ag.role})));
   };
 
-  const managerDef=agentDefs.find(d=>d.id==="manager");
+  const handleTeamChange=(id,checked)=>{
+    const newTeam=checked?[...activeTeam,id]:activeTeam.filter(x=>x!==id);
+    setActiveTeam(newTeam);
+    const instructions=Object.fromEntries(Object.entries(systemState.inbox).map(([aid,msgs])=>[aid,Array.isArray(msgs)?(msgs[0]?.text||""):(msgs||"")]));
+    const builtStages=buildPlan(pattern,newTeam,instructions,archiveFiles.length>0,t);
+    setSystemState(prev=>({...prev,stages:builtStages}));
+  };
+
+  const llmDot=llmCfg.model?(llmCfg.provider==="ollama"?"🦙":"☁️"):"⚠️";
+  const llmLabel=llmCfg.model?`${llmCfg.provider==="anthropic"?"Anthropic":"Ollama"}: ${llmCfg.model.length>18?llmCfg.model.slice(0,18)+"…":llmCfg.model}`:"No LLM";
+  const manDef=agentDefs.find(d=>d.id==="manager");
+  const currentStage=systemState.stages.find(s=>s.id===currentStageId);
+
+  const renderResult=(c,i)=>{
+    if(c.text==="__parsed__"&&c.parsed){const p=c.parsed;return(<div key={i} style={{border:"2px solid #40a060",borderRadius:10,padding:"14px 16px",background:"#fafff8",marginBottom:10}}>{p.title&&<div style={{fontWeight:700,fontSize:15,color:"#2a8a50",marginBottom:10}}>{p.title}</div>}{p.sections?.map((s,j)=>(<div key={j} style={{marginBottom:10}}><div style={{fontWeight:700,fontSize:13,color:"#333",marginBottom:3}}>{s.heading}</div><div style={{fontSize:13,color:"#444",lineHeight:1.7,whiteSpace:"pre-line"}}>{s.content}</div></div>))}{p.code&&<pre style={{background:"#1e1e2e",color:"#cdd6f4",borderRadius:8,padding:12,fontSize:12,overflowX:"auto"}}>{p.code}</pre>}{p.findings?.map((f,j)=>(<div key={j} style={{marginBottom:8,paddingLeft:10,borderLeft:"3px solid #40a060"}}><div style={{fontWeight:700,fontSize:13}}>{f.point}</div><div style={{fontSize:12,color:"#555"}}>{f.detail}</div></div>))}{p.steps?.map((s,j)=>(<div key={j} style={{marginBottom:8,background:"#f0fff4",borderRadius:7,padding:"8px 10px"}}><div style={{fontWeight:700,fontSize:12,color:"#2a8a50"}}>{s.phase}</div><div style={{fontSize:12,color:"#444"}}>{s.actions}</div></div>))}{p.key_facts&&<ul style={{margin:"0 0 10px 16px"}}>{p.key_facts.map((f,j)=><li key={j} style={{fontSize:12,color:"#444",marginBottom:3}}>{f}</li>)}</ul>}{p.insights?.map((ins,j)=>(<div key={j} style={{marginBottom:8}}><div style={{fontWeight:700,fontSize:13}}>{ins.topic}</div><div style={{fontSize:12,color:"#555"}}>{ins.detail}</div></div>))}{p.slides?.map((s,j)=>(<div key={j} style={{marginBottom:8,background:"#f8f0ff",borderRadius:7,padding:"8px 10px",border:"1px solid #c0a0e0"}}><div style={{fontWeight:700,fontSize:13,color:"#7a2a9a"}}>{t.slide} {j+1}: {s.title}</div><div style={{fontSize:12,color:"#444"}}>{s.content}</div></div>))}{p.recommendations&&<ul style={{margin:"0 0 8px 16px"}}>{p.recommendations.map((r,j)=><li key={j} style={{fontSize:12,color:"#444",marginBottom:3}}>{r}</li>)}</ul>}{p.summary&&<div style={{fontSize:13,color:"#444",lineHeight:1.7,marginTop:8,padding:"8px 10px",background:"#f0fff4",borderRadius:7}}><b>{t.summary}:</b> {p.summary}</div>}{p.conclusion&&<div style={{fontSize:13,color:"#444",lineHeight:1.7,marginTop:8,padding:"8px 10px",background:"#f0fff4",borderRadius:7}}><b>{t.conclusion}:</b> {p.conclusion}</div>}{p.key_message&&<div style={{fontSize:13,fontWeight:700,color:"#2a8a50",marginTop:8}}>💬 {p.key_message}</div>}<button onClick={()=>navigator.clipboard?.writeText(JSON.stringify(p,null,2))} style={{marginTop:10,...S.btn("#f0f4ff","#4060c0"),fontSize:11}}>{t.copyJson}</button></div>);}
+    return(<div key={i} style={{border:`2px solid ${PLATFORM_COLORS[c.platform]||"#888"}`,borderRadius:10,padding:"12px 14px",background:"#fafafa",marginBottom:10}}><div style={{fontWeight:700,color:PLATFORM_COLORS[c.platform]||"#555",marginBottom:6}}>{c.platform}</div><div style={{fontSize:13,color:"#333",lineHeight:1.7,whiteSpace:"pre-line"}}>{c.text}</div>{c.hashtags&&<div style={{color:"#888",fontSize:12,marginTop:5}}>{c.hashtags}</div>}<button onClick={()=>navigator.clipboard?.writeText(c.text)} style={{marginTop:8,...S.btn("#f0f4ff","#4060c0"),fontSize:11}}>{t.copy}</button></div>);
+  };
 
   return(
-    <div style={{background:"#f0f2f5",minHeight:"100vh",fontFamily:"'Segoe UI',sans-serif",display:"flex",flexDirection:"column"}}>
+    <div style={{background:"#f0f2f5",height:"100vh",fontFamily:"'Segoe UI',sans-serif",display:"flex",flexDirection:"column",overflow:"hidden"}}>
 
       {/* Header */}
-      <div style={{background:"#fff",borderBottom:"1px solid #ddd",padding:"7px 16px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-        <b style={{fontSize:16,color:"#222",whiteSpace:"nowrap"}}>{t.appName}</b>
-
-        {/* LLM status button */}
-        <button onClick={()=>setShowLLM(true)}
-          style={{display:"flex",alignItems:"center",gap:5,padding:"4px 10px",borderRadius:7,border:`1.5px solid ${llmCfg.model?"#4060c0":"#f0a000"}`,background:llmCfg.model?"#f0f4ff":"#fff8ee",cursor:"pointer",fontSize:11,color:llmCfg.model?"#4060c0":"#c87000",fontWeight:600}}>
-          <span>{llmStatusDot}</span>
-          <span>{llmStatusLabel}</span>
+      <div style={{background:"#fff",borderBottom:"1px solid #ddd",padding:"6px 14px",display:"flex",alignItems:"center",gap:7,flexWrap:"wrap",flexShrink:0}}>
+        <b style={{fontSize:15,color:"#222",whiteSpace:"nowrap"}}>{t.appName}</b>
+        <button onClick={()=>setShowLLM(true)} style={{display:"flex",alignItems:"center",gap:4,padding:"3px 9px",borderRadius:7,border:`1.5px solid ${llmCfg.model?"#4060c0":"#f0a000"}`,background:llmCfg.model?"#f0f4ff":"#fff8ee",cursor:"pointer",fontSize:11,color:llmCfg.model?"#4060c0":"#c87000",fontWeight:600}}>
+          {llmDot} {llmLabel}
         </button>
-
-        {/* Lang */}
-        <select value={lang} onChange={e=>handleLangChange(e.target.value)}
-          style={{padding:"3px 7px",borderRadius:6,border:"1px solid #ddd",background:"#f4f4f8",color:"#333",fontSize:11,cursor:"pointer"}}>
-          <option value="ru">🇷🇺 Русский</option>
-          <option value="en">🇬🇧 English</option>
+        <select value={lang} onChange={e=>handleLangChange(e.target.value)} style={{padding:"3px 6px",borderRadius:6,border:"1px solid #ddd",background:"#f4f4f8",color:"#333",fontSize:11,cursor:"pointer"}}>
+          <option value="ru">🇷🇺 RU</option><option value="en">🇬🇧 EN</option>
         </select>
-
-        {/* Patterns */}
-        <div style={{display:"flex",gap:3,background:"#f4f4f8",borderRadius:8,padding:"3px 4px"}}>
-          {Object.values(PATTERNS).map(p=>(
-            <button key={p.id} onClick={()=>setPattern(p.id)} title={t.patternDesc[p.id]}
-              style={{...S.btn(pattern===p.id?"#4060c0":"transparent",pattern===p.id?"#fff":"#555"),fontSize:10,padding:"3px 8px",borderRadius:5,border:"none"}}>
-              {t.patternNames[p.id]}
+        <div style={{display:"flex",gap:2,background:"#f4f4f8",borderRadius:8,padding:"2px 3px"}}>
+          {["supervisor","pipeline","blackboard","a2a"].map(p=>(
+            <button key={p} onClick={()=>setPattern(p)} title={t.patternDesc[p]}
+              style={{...S.btn(pattern===p?"#4060c0":"transparent",pattern===p?"#fff":"#555"),fontSize:10,padding:"3px 7px",borderRadius:5,border:"none"}}>
+              {t.patternNames[p]}
             </button>
           ))}
         </div>
-
-        <button onClick={()=>setShowSettings(true)} style={{...S.btn("#f4f4f8","#555"),fontSize:11,padding:"4px 10px",border:"1px solid #ddd"}}>⚙️ {t.agentsBtn}</button>
-
-        <div style={{display:"flex",gap:3}}>
+        <button onClick={()=>setShowSettings(true)} style={{...S.btn("#f4f4f8","#555"),fontSize:11,padding:"3px 9px",border:"1px solid #ddd"}}>⚙️ {t.agentsBtn}</button>
+        <div style={{display:"flex",gap:2}}>
           {FIG_STYLES.map(s=>(
-            <button key={s.id} onClick={()=>setFigStyle(s.id)} style={{padding:"3px 8px",borderRadius:5,cursor:"pointer",fontSize:12,border:`2px solid ${figStyle===s.id?"#4060c0":"#ddd"}`,background:figStyle===s.id?"#e8eeff":"#fff",color:figStyle===s.id?"#4060c0":"#666"}}>
+            <button key={s.id} onClick={()=>setFigStyle(s.id)} style={{padding:"3px 7px",borderRadius:5,cursor:"pointer",fontSize:12,border:`2px solid ${figStyle===s.id?"#4060c0":"#ddd"}`,background:figStyle===s.id?"#e8eeff":"#fff",color:figStyle===s.id?"#4060c0":"#666"}}>
               {s.label}
             </button>
           ))}
         </div>
-
         <div style={{display:"flex",alignItems:"center",gap:4}}>
-          <span style={{fontSize:10,color:"#888"}}>🐢</span>
-          <input type="range" min={1} max={5} value={speed} onChange={e=>setSpeed(+e.target.value)} style={{width:55,accentColor:"#4060c0"}}/>
-          <span style={{fontSize:10,color:"#888"}}>🚀</span>
+          <span style={{fontSize:10,color:"#888",whiteSpace:"nowrap"}}>{t.speedLabel}:</span>
+          <span style={{fontSize:10,color:"#aaa"}}>🐢</span>
+          <input type="range" min={1} max={5} value={speed} onChange={e=>setSpeed(+e.target.value)}
+            title={["8s","4s","2s","0.8s","0.1s"][speed-1]}
+            style={{width:55,accentColor:"#4060c0"}}/>
+          <span style={{fontSize:10,color:"#aaa"}}>🚀</span>
+          <span style={{fontSize:10,color:"#4060c0",fontWeight:700,minWidth:14}}>{speed}</span>
         </div>
-
-        <div style={{marginLeft:"auto",display:"flex",gap:6,alignItems:"center"}}>
+        <div style={{marginLeft:"auto",display:"flex",gap:5,alignItems:"center"}}>
           {phase==="running"&&!paused&&<button onClick={handlePause} style={{...S.btn("#fff3cd","#c8860a"),border:"1px solid #c8a040",fontSize:11}}>{t.pause}</button>}
           {phase==="running"&&paused&&<button onClick={handleResume} style={{...S.btn("#d4edda","#2a8a50"),border:"1px solid #2a8a50",fontSize:11}}>{t.resume}</button>}
           {(phase==="running"||phase==="done")&&<button onClick={()=>setShowResult(true)} disabled={phase!=="done"} style={{...S.btn(phase==="done"?"#2a8a50":"#ccc","#fff"),fontSize:11,opacity:phase==="done"?1:0.6}}>{t.result}</button>}
-          {phase!=="cowork"&&<button onClick={handleReset} style={{...S.btn("#eee","#555"),fontSize:11}}>{t.reset}</button>}
+          {phase!=="idle"&&<button onClick={handleReset} style={{...S.btn("#eee","#555"),fontSize:11}}>{t.reset}</button>}
         </div>
       </div>
 
-      {/* Pattern info */}
-      <div style={{background:"#f8f8ff",borderBottom:"1px solid #e8e8f0",padding:"3px 16px",fontSize:10,color:"#6070a0"}}>
-        {t.patternNames[pattern]}: {t.patternDesc[pattern]}
+      {/* Pattern bar */}
+      <div style={{background:"#f8f8ff",borderBottom:"1px solid #e8e8f0",padding:"2px 14px",fontSize:10,color:"#6070a0",flexShrink:0,display:"flex",alignItems:"center",gap:8}}>
+        <span>{t.patternNames[pattern]}: {t.patternDesc[pattern]}</span>
+        {currentStage&&phase==="running"&&<span style={{color:"#4060c0",fontWeight:700}}>▶ {currentStage.step}/{systemState.stages.length}: {agentDefs.find(d=>d.id===currentStage.agentId)?.name} → {ZONES_T[currentStage.zone]?.label}</span>}
+        {phase==="replanning"&&<span style={{color:"#c8860a",fontWeight:700}}>🔄 {t.replanLog}</span>}
       </div>
 
-      <div style={{display:"flex",flex:1,overflow:"hidden"}}>
+      <div style={{display:"flex",flex:1,overflow:"hidden",minHeight:0}}>
         {/* Canvas */}
-        <div style={{flex:1,position:"relative",overflow:"hidden",minHeight:430}}>
-          <svg width="100%" height="100%" viewBox="0 0 760 415" style={{position:"absolute",inset:0}}>
+        <div style={{flex:1,position:"relative",overflow:"hidden"}}>
+          <svg width="100%" height="100%" viewBox="0 0 760 415" preserveAspectRatio="xMidYMid meet" style={{position:"absolute",inset:0}}>
             {ZONE_KEYS.map(k=>{
               const z=ZONES_T[k];
+              const isActive=activeNow.length>0&&agents.some(a=>activeNow.includes(a.id)&&a.zoneId===k);
               return(
                 <g key={k}>
-                  <rect x={z.x} y={z.y} width={z.w} height={z.h} rx={10} fill={z.color} stroke={z.border} strokeWidth={1.5}/>
-                  <text x={z.x+10} y={z.y+18} fill={z.border} fontSize={11} fontWeight="700">{z.label}</text>
+                  <rect x={z.x} y={z.y} width={z.w} height={z.h} rx={10} fill={z.color} stroke={isActive?"#4060c0":z.border} strokeWidth={isActive?2.5:1.5}/>
+                  {isActive&&<rect x={z.x} y={z.y} width={z.w} height={z.h} rx={10} fill="none" stroke="#4060c0" strokeWidth={3} opacity={0.35}><animate attributeName="opacity" values="0.35;0.08;0.35" dur="1s" repeatCount="indefinite"/></rect>}
+                  <text x={z.x+10} y={z.y+18} fill={isActive?"#4060c0":z.border} fontSize={11} fontWeight="700">{z.label}</text>
                   {k==="archive"&&(
                     <g onClick={()=>setShowArchive(true)} style={{cursor:"pointer"}}>
                       <circle cx={z.x+z.w-16} cy={z.y+16} r={11} fill={archiveFiles.length>0?"#a070c0":"#c0a0e0"} opacity={0.9}/>
@@ -810,62 +1370,260 @@ export default function App() {
                 </g>
               );
             })}
-            {labCards.map((c,i)=>(<foreignObject key={i} x={ZONE_BASE.lab.x+10+(i%4)*130} y={ZONE_BASE.lab.y+90+(Math.floor(i/4)*86)} width={124} height={80}><div xmlns="http://www.w3.org/1999/xhtml" style={{background:"#fff",border:`1.5px solid ${c.color}88`,borderRadius:7,padding:"5px 7px",fontSize:9.5,color:"#333",lineHeight:1.4,wordBreak:"break-word",boxShadow:"0 1px 4px #0001"}}><span style={{color:c.color,fontWeight:700,fontSize:10}}>{c.emoji} {c.agent}</span><br/>{c.text.length>130?c.text.slice(0,130)+"…":c.text}</div></foreignObject>))}
-            {boardCards.map((c,i)=>(<foreignObject key={i} x={ZONE_BASE.board.x+8} y={ZONE_BASE.board.y+24+i*108} width={ZONE_BASE.board.w-16} height={100}><div xmlns="http://www.w3.org/1999/xhtml" style={{background:"#fff",border:`2px solid ${PLATFORM_COLORS[c.platform]||"#40a060"}`,borderRadius:8,padding:"6px 8px",fontSize:10,color:"#333",lineHeight:1.45,boxShadow:"0 1px 5px #0001"}}><div style={{fontWeight:700,color:PLATFORM_COLORS[c.platform]||"#2a8a50",marginBottom:3,fontSize:11}}>{c.platform}</div><div>{(c.text==="__parsed__"?(c.parsed?.summary||c.parsed?.conclusion||c.parsed?.key_message||"Done!"):c.text).slice(0,140)}</div></div></foreignObject>))}
-            {conns.map(([a,b],i)=>{const a1=agents.find(x=>x.id===a),a2=agents.find(x=>x.id===b);if(!a1||!a2)return null;return<line key={i} x1={a1.x} y1={a1.y} x2={a2.x} y2={a2.y} stroke="#6080e0" strokeWidth={1.5} opacity={0.35} strokeDasharray="5 4"><animate attributeName="stroke-dashoffset" from="0" to="-18" dur="1s" repeatCount="indefinite"/></line>;})}
-            {agents.map(ag=>(<g key={ag.id} onClick={()=>handleAgentClick(ag)} style={{cursor:phase==="running"&&!loading&&!frozen&&activeTeam.includes(ag.id)?"pointer":"default",opacity:phase==="running"&&ag.id!=="manager"&&!activeTeam.includes(ag.id)?0.3:1}}>
-              <Fig x={ag.x} y={ag.y} color={ag.color} emoji={ag.emoji} frozen={ag.status==="frozen"} style={figStyle} small={ag.zoneId==="lab"}/>
-              {ag.zoneId!=="lab"&&<text x={ag.x} y={ag.y+(figStyle==="dot"?14:42)} textAnchor="middle" fill={ag.color} fontSize={10} fontWeight="700">{ag.name}</text>}
-              {ag.status==="frozen"&&<text x={ag.x} y={ag.y-54} textAnchor="middle" fontSize={14}>❄️</text>}
-              {ag.bubble&&ag.id!==frozen&&ag.zoneId!=="lab"&&(<foreignObject x={ag.x-78} y={ag.y-96} width={156} height={56}><div xmlns="http://www.w3.org/1999/xhtml" style={{background:"#ffffffee",border:`1.5px solid ${ag.color}88`,borderRadius:8,padding:"4px 7px",fontSize:10,color:"#333",lineHeight:1.4,wordBreak:"break-word",boxShadow:"0 2px 6px #0001"}}>{ag.bubble.length>90?ag.bubble.slice(0,90)+"…":ag.bubble}</div></foreignObject>)}
-            </g>))}
+
+            {/* Shared board cards in lab */}
+            {Object.entries(systemState.sharedBoard).filter(([id,v])=>v?.zone==="lab"||v?.zone==="library"||v?.zone==="archive").map(([id,v],i)=>{
+              const def=agentDefs.find(d=>d.id===id);
+              return(
+                <foreignObject key={id} x={ZONE_BASE.lab.x+8+(i%4)*134} y={ZONE_BASE.lab.y+88+(Math.floor(i/4)*70)} width={128} height={66}>
+                  <div xmlns="http://www.w3.org/1999/xhtml" style={{background:"#fff",border:`1.5px solid ${def?.color||"#888"}88`,borderRadius:7,padding:"4px 6px",fontSize:9,color:"#333",lineHeight:1.4,wordBreak:"break-word",boxShadow:"0 1px 4px #0001"}}>
+                    <span style={{color:def?.color,fontWeight:700,fontSize:9.5}}>{def?.emoji} {def?.name}</span><br/>
+                    {(v.text||"").slice(0,110)}{(v.text||"").length>110?"…":""}
+                  </div>
+                </foreignObject>
+              );
+            })}
+
+            {/* Board result cards */}
+            {boardCards.map((c,i)=>(
+              <foreignObject key={i} x={ZONE_BASE.board.x+7} y={ZONE_BASE.board.y+22+i*88} width={ZONE_BASE.board.w-14} height={84}>
+                <div xmlns="http://www.w3.org/1999/xhtml" style={{background:"#fff",border:`2px solid ${PLATFORM_COLORS[c.platform]||"#40a060"}`,borderRadius:8,padding:"5px 7px",fontSize:9.5,color:"#333",lineHeight:1.4,boxShadow:"0 1px 5px #0001"}}>
+                  <div style={{fontWeight:700,color:PLATFORM_COLORS[c.platform]||"#2a8a50",marginBottom:2,fontSize:10}}>{c.platform}</div>
+                  <div>{(c.text==="__parsed__"?(c.parsed?.summary||c.parsed?.conclusion||c.parsed?.key_message||"Done!"):c.text).slice(0,120)}</div>
+                </div>
+              </foreignObject>
+            ))}
+
+            {/* Arrows */}
+            {arrows.map((arr,i)=>{
+              const fa=agents.find(a=>a.id===arr.from);
+              const ta=agents.find(a=>a.id===arr.to);
+              if(!fa||!ta) return null;
+              const def=agentDefs.find(d=>d.id===arr.from);
+              return <Arrow key={i} x1={fa.x} y1={fa.y} x2={ta.x} y2={ta.y} color={def?.color}/>;
+            })}
+
+            {/* Agents */}
+            {agents.map(ag=>{
+              const stageIds=systemState.stages.map(s=>s.agentId);
+              const isInvolved=ag.id==="manager"||activeTeam.includes(ag.id)||stageIds.includes(ag.id);
+              const inLab=ag.zoneId==="lab";
+              return(
+                <g key={ag.id} onClick={()=>handleAgentClick(ag)}
+                  style={{cursor:phase==="running"&&!loading&&!frozen&&isInvolved?"pointer":"default",opacity:isInvolved?1:0.22}}>
+                  <Fig x={ag.x} y={ag.y} color={ag.color} emoji={ag.emoji} agentStatus={ag.agentStatus} figStyle={figStyle} inLab={inLab}/>
+                  <text x={ag.x} y={ag.y+(inLab?30:43)} textAnchor="middle"
+                    fill={ag.agentStatus==="working"?"#4060c0":ag.color}
+                    fontSize={inLab?9:10} fontWeight={ag.agentStatus==="working"?700:600}>
+                    {ag.name}
+                  </text>
+                  {ag.bubble&&ag.id!==frozen&&ag.zoneId!=="lab"&&(
+                    <foreignObject x={ag.x-76} y={ag.y-94} width={152} height={54}>
+                      <div xmlns="http://www.w3.org/1999/xhtml" style={{background:"#ffffffee",border:`1.5px solid ${ag.color}88`,borderRadius:8,padding:"4px 7px",fontSize:10,color:"#333",lineHeight:1.4,wordBreak:"break-word",boxShadow:"0 2px 6px #0001"}}>
+                        {ag.bubble.length>88?ag.bubble.slice(0,88)+"…":ag.bubble}
+                      </div>
+                    </foreignObject>
+                  )}
+                </g>
+              );
+            })}
           </svg>
 
-          {loading&&(<div style={{position:"absolute",top:10,left:"50%",transform:"translateX(-50%)",background:"#ffffffee",border:"1px solid #c0c8ff",borderRadius:20,padding:"5px 16px",fontSize:13,color:"#4060c0",display:"flex",alignItems:"center",gap:8}}><span style={{display:"inline-block",animation:"spin 1s linear infinite"}}>⏳</span>{t.agentsThinking}<style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style></div>)}
+          {/* Loading indicator */}
+          {loading&&(
+            <div style={{position:"absolute",top:10,left:"50%",transform:"translateX(-50%)",background:"#ffffffee",border:"1px solid #c0c8ff",borderRadius:20,padding:"5px 16px",fontSize:13,color:"#4060c0",display:"flex",alignItems:"center",gap:8,zIndex:10,whiteSpace:"nowrap"}}>
+              <span style={{display:"inline-block",animation:"spin 1s linear infinite"}}>⏳</span>
+              {activeNow.length>0?`${t.nowWorking} ${activeNow.map(id=>agentDefs.find(d=>d.id===id)?.name).join(", ")}`:t.agentsThinking}
+              <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
+            </div>
+          )}
 
-          {paused&&(<div style={{position:"absolute",top:10,left:"50%",transform:"translateX(-50%)",background:"#fff",border:"2px solid #c8a040",borderRadius:12,padding:16,width:320,zIndex:20,boxShadow:"0 4px 20px #0003"}}><div style={{fontSize:14,fontWeight:700,color:"#c8860a",marginBottom:8}}>{t.correctionTitle}</div><textarea value={pauseInput} onChange={e=>setPauseInput(e.target.value)} placeholder={t.correctionPlaceholder} autoFocus style={{width:"100%",minHeight:70,border:"1.5px solid #c8a04088",borderRadius:7,padding:8,fontSize:13,resize:"vertical",boxSizing:"border-box",color:"#333"}}/><div style={{display:"flex",gap:8,marginTop:8}}><button onClick={handlePauseInstruction} disabled={pauseLoading||!pauseInput.trim()} style={{...S.btn("#c8860a","#fff"),flex:1,opacity:pauseLoading||!pauseInput.trim()?0.5:1}}>{pauseLoading?t.thinking:t.sendToMax}</button><button onClick={handleResume} style={S.btn("#eee","#555")}>✖</button></div></div>)}
+          {/* Pause panel */}
+          {paused&&(
+            <div style={{position:"absolute",top:10,left:"50%",transform:"translateX(-50%)",background:"#fff",border:"2px solid #c8a040",borderRadius:12,padding:16,width:320,zIndex:20,boxShadow:"0 4px 20px #0003"}}>
+              <div style={{fontSize:14,fontWeight:700,color:"#c8860a",marginBottom:8}}>{t.correctionTitle}</div>
+              <textarea value={pauseInput} onChange={e=>setPauseInput(e.target.value)} placeholder={t.correctionPlaceholder} autoFocus style={{width:"100%",minHeight:70,border:"1.5px solid #c8a04088",borderRadius:7,padding:8,fontSize:13,resize:"vertical",boxSizing:"border-box",color:"#333"}}/>
+              <div style={{display:"flex",gap:8,marginTop:8}}>
+                <button onClick={handlePauseInstruction} disabled={pauseLoading||!pauseInput.trim()} style={{...S.btn("#c8860a","#fff"),flex:1,opacity:pauseLoading||!pauseInput.trim()?0.5:1}}>{pauseLoading?t.thinking:t.sendToMax}</button>
+                <button onClick={handleResume} style={S.btn("#eee","#555")}>✖</button>
+              </div>
+            </div>
+          )}
 
-          {phase==="team"&&!loading&&(<div style={{position:"absolute",inset:0,background:"#00000022",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{background:"#fff",borderRadius:14,padding:24,maxWidth:480,width:"90%",boxShadow:"0 8px 32px #0003"}}><div style={{fontSize:20,textAlign:"center",marginBottom:4}}>{managerDef?.emoji} {managerDef?.name} — {t.patternNames[pattern]}</div><div style={{fontSize:11,color:"#6070a0",textAlign:"center",marginBottom:10}}>{t.patternDesc[pattern]}</div><div style={{fontSize:12,color:"#888",marginBottom:4}}>{t.editPlan}</div><textarea value={managerPlan} onChange={e=>{setManagerPlan(e.target.value);const txt=e.target.value.toLowerCase();const det=agentDefs.filter(d=>d.id!=="manager"&&(txt.includes(d.name.toLowerCase())||txt.includes(d.role.toLowerCase()))).map(d=>d.id);if(det.length)setActiveTeam(det);}} style={{width:"100%",minHeight:72,border:"1.5px solid #c8a04066",borderRadius:8,padding:"7px 10px",fontSize:13,resize:"vertical",boxSizing:"border-box",color:"#333",background:"#fdf6e8",marginBottom:10}}/><div style={{fontSize:12,color:"#888",marginBottom:6}}>{t.teamComposition}</div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginBottom:16}}>{agentDefs.filter(d=>d.id!=="manager").map(d=>{const isA=activeTeam.includes(d.id);return(<label key={d.id} style={{display:"flex",alignItems:"center",gap:8,background:isA?"#f0f8ff":"#f8f8f8",border:`1.5px solid ${isA?d.color+"66":"#ddd"}`,borderRadius:8,padding:"7px 10px",cursor:"pointer"}}><input type="checkbox" checked={isA} onChange={e=>setActiveTeam(p=>e.target.checked?[...p,d.id]:p.filter(id=>id!==d.id))} style={{accentColor:d.color,width:14,height:14}}/><span style={{fontSize:16}}>{d.emoji}</span><div><div style={{fontSize:12,fontWeight:700,color:isA?d.color:"#888"}}>{d.name}</div><div style={{fontSize:9,color:"#999"}}>{d.role}</div></div></label>);})}</div><button onClick={handleAcceptTeam} style={{...S.btn("#2a8a50","#fff"),width:"100%",padding:"10px",fontSize:14,fontWeight:700}}>{activeTeam.length?t.startTeam(activeTeam.length):t.startSolo}</button></div></div>)}
+          {/* ── Team approval overlay ── */}
+          {phase==="team"&&!loading&&(
+            <div style={{position:"absolute",inset:0,background:"#00000022",display:"flex",alignItems:"center",justifyContent:"center",zIndex:15}}>
+              <div style={{background:"#fff",borderRadius:14,padding:20,maxWidth:520,width:"94%",maxHeight:"88vh",overflowY:"auto",boxShadow:"0 8px 32px #0003"}}>
+                <div style={{fontSize:17,textAlign:"center",marginBottom:4}}>{manDef?.emoji} {manDef?.name} — {t.patternNames[pattern]}</div>
+                <div style={{fontSize:11,color:"#6070a0",textAlign:"center",marginBottom:10}}>{t.patternDesc[pattern]}</div>
 
-          {frozen&&(<div style={{position:"absolute",bottom:14,left:"50%",transform:"translateX(-50%)",background:"#fff",border:"2px solid #4060c0",borderRadius:12,padding:14,width:360,zIndex:10,boxShadow:"0 4px 20px #0002"}}>{(()=>{const ag=agents.find(a=>a.id===frozen);return ag?(<div><div style={{fontSize:13,color:"#555",marginBottom:7}}>❄️ {ag.emoji} <b style={{color:ag.color}}>{ag.name}</b> — {t.freezeInstruction}</div><textarea value={editBubble} onChange={e=>setEditBubble(e.target.value)} style={{width:"100%",border:"1.5px solid #aac",borderRadius:6,padding:7,fontSize:13,resize:"vertical",minHeight:56,boxSizing:"border-box",color:"#333"}}/><div style={{display:"flex",gap:7,marginTop:7}}><button onClick={handleSendInstruction} style={{...S.btn("#2a8a50","#fff"),flex:1}}>{t.send2}</button><button onClick={()=>{setFrozen(null);setEditBubble("");setAgents(p=>p.map(a=>a.id===frozen?{...a,status:"active"}:a));}} style={{...S.btn("#d04040","#fff"),flex:1}}>{t.cancel}</button></div></div>):null;})()}</div>)}
+                {/* Editable plan text */}
+                <div style={{marginBottom:12}}>
+                  {editingPlan ? (
+                    <div>
+                      <textarea
+                        value={planEditValue}
+                        onChange={e=>setPlanEditValue(e.target.value)}
+                        autoFocus
+                        style={{width:"100%",minHeight:80,border:"2px solid #c8a040",borderRadius:9,padding:"8px 10px",fontSize:12,color:"#444",lineHeight:1.6,resize:"vertical",boxSizing:"border-box",background:"#fffdf0"}}
+                      />
+                      <div style={{display:"flex",gap:6,marginTop:6}}>
+                        <button onClick={handleSavePlan} style={{...S.btn("#2a8a50","#fff"),fontSize:11,flex:1}}>✅ {t.planEdited}</button>
+                        <button onClick={()=>setEditingPlan(false)} style={{...S.btn("#eee","#555"),fontSize:11}}>{t.cancel}</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{position:"relative"}}>
+                      <div style={{background:"#fdf6e8",borderRadius:9,padding:"10px 12px",fontSize:12,color:"#444",lineHeight:1.6,border:"1.5px solid #c8a04044",paddingRight:90}}>
+                        {planText}
+                      </div>
+                      <button
+                        onClick={handleEditPlan}
+                        style={{position:"absolute",top:6,right:6,...S.btn("#fff8e8","#c8860a"),fontSize:10,padding:"3px 8px",border:"1px solid #c8a04066"}}>
+                        {t.editPlan}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Detailed plan checkbox */}
+                <label style={{display:"flex",alignItems:"center",gap:7,fontSize:12,color:"#555",marginBottom:8,cursor:"pointer"}}>
+                  <input type="checkbox" checked={showDetailedPlan} onChange={e=>setShowDetailedPlan(e.target.checked)} style={{accentColor:"#4060c0",width:14,height:14}}/>
+                  {t.showDetailedPlan}
+                </label>
+                {showDetailedPlan&&<PlanTable stages={systemState.stages} agentDefs={agentDefs} t={t} currentStageId={null}/>}
+
+                {/* Team composition */}
+                <div style={{fontSize:12,color:"#888",marginBottom:6,marginTop:12}}>{t.editTeam}</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:14}}>
+                  {agentDefs.filter(d=>d.id!=="manager").map(d=>{
+                    const isA=activeTeam.includes(d.id);
+                    return(
+                      <label key={d.id} style={{display:"flex",alignItems:"center",gap:7,background:isA?"#f0f8ff":"#f8f8f8",border:`1.5px solid ${isA?d.color+"66":"#ddd"}`,borderRadius:8,padding:"6px 10px",cursor:"pointer"}}>
+                        <input type="checkbox" checked={isA} onChange={e=>handleTeamChange(d.id,e.target.checked)} style={{accentColor:d.color,width:13,height:13}}/>
+                        <span style={{fontSize:15}}>{d.emoji}</span>
+                        <div><div style={{fontSize:11,fontWeight:700,color:isA?d.color:"#888"}}>{d.name}</div><div style={{fontSize:9,color:"#999"}}>{d.role}</div></div>
+                      </label>
+                    );
+                  })}
+                </div>
+                <button onClick={handleAcceptTeam} style={{...S.btn("#2a8a50","#fff"),width:"100%",padding:"10px",fontSize:14,fontWeight:700}}>
+                  {activeTeam.length?t.startTeam(activeTeam.length):t.startSolo}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Freeze panel */}
+          {frozen&&(
+            <div style={{position:"absolute",bottom:14,left:"50%",transform:"translateX(-50%)",background:"#fff",border:"2px solid #4060c0",borderRadius:12,padding:14,width:360,zIndex:10,boxShadow:"0 4px 20px #0002"}}>
+              {(()=>{const ag=agents.find(a=>a.id===frozen);return ag?(<div><div style={{fontSize:13,color:"#555",marginBottom:7}}>❄️ {ag.emoji} <b style={{color:ag.color}}>{ag.name}</b> — {t.freezeInstruction}</div><textarea value={editBubble} onChange={e=>setEditBubble(e.target.value)} style={{width:"100%",border:"1.5px solid #aac",borderRadius:6,padding:7,fontSize:13,resize:"vertical",minHeight:56,boxSizing:"border-box",color:"#333"}}/><div style={{display:"flex",gap:7,marginTop:7}}><button onClick={handleSendInstruction} style={{...S.btn("#2a8a50","#fff"),flex:1}}>{t.send2}</button><button onClick={()=>{setFrozen(null);setEditBubble("");setAgents(p=>p.map(a=>a.id===frozen?{...a,agentStatus:"waiting"}:a));}} style={{...S.btn("#d04040","#fff"),flex:1}}>{t.cancel}</button></div></div>):null;})()}
+            </div>
+          )}
         </div>
 
         {/* Sidebar */}
-        <div style={{width:230,background:"#fff",borderLeft:"1px solid #e0e0e0",display:"flex",flexDirection:"column"}}>
-          <div style={{padding:10,borderBottom:"1px solid #eee"}}>
-            <div style={{fontSize:12,fontWeight:700,color:"#333",marginBottom:6}}>{t.taskLabel}</div>
+        <div style={{width:228,background:"#fff",borderLeft:"1px solid #e0e0e0",display:"flex",flexDirection:"column",flexShrink:0,overflow:"hidden"}}>
+          {/* Task */}
+          <div style={{padding:9,borderBottom:"1px solid #eee",flexShrink:0}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#333",marginBottom:5}}>{t.taskLabel}</div>
             <textarea value={chatInput} onChange={e=>setChatInput(e.target.value)} placeholder={t.taskPlaceholder}
-              disabled={loading||(phase!=="cowork"&&phase!=="done")}
-              style={{width:"100%",minHeight:72,border:"1.5px solid #ccd",borderRadius:7,padding:7,fontSize:12,resize:"vertical",boxSizing:"border-box",color:"#333",background:loading||(phase!=="cowork"&&phase!=="done")?"#f5f5f5":"#fff"}}
+              disabled={loading||(phase!=="idle"&&phase!=="done")}
+              style={{width:"100%",minHeight:70,border:"1.5px solid #ccd",borderRadius:7,padding:7,fontSize:12,resize:"vertical",boxSizing:"border-box",color:"#333",background:loading||(phase!=="idle"&&phase!=="done")?"#f5f5f5":"#fff"}}
               onKeyDown={e=>{if(e.key==="Enter"&&e.ctrlKey)handleSendGoal();}}/>
-            <button onClick={handleSendGoal} disabled={loading||(phase!=="cowork"&&phase!=="done")||!chatInput.trim()}
-              style={{...S.btn(loading||(phase!=="cowork"&&phase!=="done")?"#ccc":"#4060c0","#fff"),width:"100%",marginTop:5,fontSize:11,opacity:loading||(phase!=="cowork"&&phase!=="done")?0.5:1}}>
-              {t.send}
+            <button onClick={handleSendGoal} disabled={loading||(phase!=="idle"&&phase!=="done")||!chatInput.trim()}
+              style={{...S.btn(loading||(phase!=="idle"&&phase!=="done")?"#ccc":"#4060c0","#fff"),width:"100%",marginTop:4,fontSize:11,opacity:loading||(phase!=="idle"&&phase!=="done")?0.5:1}}>
+              {phase==="planning"?t.planning:t.send}
             </button>
           </div>
 
-          {(phase==="running"||phase==="finalizing"||phase==="done")&&(<div style={{padding:"6px 10px",borderBottom:"1px solid #eee"}}><div style={{fontSize:10,color:"#888",marginBottom:3}}>{t.step} {Math.min(step,TOTAL_STEPS+1)}/{TOTAL_STEPS+1}</div><div style={{background:"#eee",borderRadius:4,height:5}}><div style={{background:"#4060c0",borderRadius:4,height:5,width:`${Math.min(step/(TOTAL_STEPS+1)*100,100)}%`,transition:"width 0.6s"}}/></div></div>)}
+          {/* Stage progress */}
+          {(phase==="running"||phase==="replanning"||phase==="finalizing"||phase==="done")&&systemState.stages.length>0&&(
+            <div style={{padding:"5px 9px",borderBottom:"1px solid #eee",flexShrink:0}}>
+              <div style={{fontSize:9,color:"#888",marginBottom:2}}>{t.step}: {systemState.stages.filter(s=>s.status==="done").length}/{systemState.stages.length} · round {systemState.managerState.round+1}/{systemState.managerState.maxRounds}</div>
+              <div style={{background:"#eee",borderRadius:4,height:4,marginBottom:4}}>
+                <div style={{background:"#4060c0",borderRadius:4,height:4,width:`${Math.min(systemState.stages.filter(s=>s.status==="done").length/systemState.stages.length*100,100)}%`,transition:"width 0.6s"}}/>
+              </div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:2}}>
+                {systemState.stages.map(s=>{
+                  const def=agentDefs.find(d=>d.id===s.agentId);
+                  const isCur=s.id===currentStageId;
+                  return(
+                    <div key={s.id} title={`${s.step}. ${def?.name} → ${t.zones?.[s.zone]||s.zone}`}
+                      style={{fontSize:7,padding:"1px 4px",borderRadius:3,
+                        background:s.status==="done"?"#4060c0":s.status==="skipped"?"#f0a000":isCur?"#90a8f0":"#eee",
+                        color:s.status==="done"||isCur?"#fff":"#999",fontWeight:isCur?700:400}}>
+                      {s.step}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
-          {(phase==="running"||phase==="finalizing"||phase==="done")&&(<div style={{padding:"6px 10px",borderBottom:"1px solid #eee"}}><div style={{fontSize:10,fontWeight:700,color:"#888",marginBottom:5,textTransform:"uppercase",letterSpacing:0.8}}>{t.team}</div>{agentDefs.map(d=>{const ag=agents.find(a=>a.id===d.id);const isA=d.id==="manager"||activeTeam.includes(d.id);return(<div key={d.id} onClick={()=>ag&&handleAgentClick(ag)} style={{display:"flex",alignItems:"center",gap:6,marginBottom:5,cursor:isA&&phase==="running"?"pointer":"default",padding:"3px 5px",borderRadius:5,background:frozen===d.id?"#eef":"transparent",opacity:isA?1:0.35}}><span style={{fontSize:13}}>{d.emoji}</span><div style={{flex:1,minWidth:0}}><div style={{fontSize:11,fontWeight:700,color:isA?d.color:"#aaa"}}>{d.name}</div><div style={{fontSize:9,color:"#999",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{isA?(ZONES_T[ag?.zoneId]?.label||""):t.notInvolved}</div></div>{isA&&<div style={{width:7,height:7,borderRadius:"50%",background:ag?.status==="frozen"?"#4060c0":ag?.status==="active"?"#2a8a50":"#ccc"}}/>}</div>);})}</div>)}
+          {/* Team */}
+          {(phase==="running"||phase==="replanning"||phase==="finalizing"||phase==="done")&&(
+            <div style={{padding:"5px 9px",borderBottom:"1px solid #eee",flexShrink:0}}>
+              <div style={{fontSize:9,fontWeight:700,color:"#888",marginBottom:4,textTransform:"uppercase",letterSpacing:0.7}}>{t.team}</div>
+              {agentDefs.map(d=>{
+                const ag=agents.find(a=>a.id===d.id);
+                const isA=d.id==="manager"||activeTeam.includes(d.id);
+                const isNow=activeNow.includes(d.id);
+                const statusColor={working:"#4060c0",done:"#2a8a50",stopped:"#60a0ff",waiting:"#ccc",ready:"#f0a000"}[ag?.agentStatus]||"#ccc";
+                return(
+                  <div key={d.id} onClick={()=>ag&&handleAgentClick(ag)}
+                    style={{display:"flex",alignItems:"center",gap:5,marginBottom:3,cursor:isA&&phase==="running"?"pointer":"default",padding:"2px 4px",borderRadius:5,background:isNow?"#eef4ff":"transparent",opacity:isA?1:0.28}}>
+                    <span style={{fontSize:12}}>{d.emoji}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:10,fontWeight:700,color:isNow?"#4060c0":isA?d.color:"#aaa"}}>{d.name}</div>
+                      <div style={{fontSize:8,color:"#999",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        {isA?(ZONES_T[ag?.zoneId]?.label||""):t.notInvolved}
+                      </div>
+                    </div>
+                    {isA&&<div style={{width:6,height:6,borderRadius:"50%",flexShrink:0,background:statusColor}}/>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
-          <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-            <div style={{padding:"6px 10px",fontSize:10,fontWeight:700,color:"#888",textTransform:"uppercase",letterSpacing:0.8}}>📡 {t.log}</div>
-            <div ref={logRef} style={{flex:1,overflowY:"auto",padding:"0 10px 10px"}}>
-              {log.map((l,i)=>(<div key={i} style={{fontSize:10,color:"#555",borderBottom:"1px solid #f0f0f0",padding:"3px 0",lineHeight:1.4}}>{l}</div>))}
+          {/* Log */}
+          <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",minHeight:0}}>
+            <div style={{padding:"4px 9px",fontSize:9,fontWeight:700,color:"#888",textTransform:"uppercase",letterSpacing:0.7,flexShrink:0}}>📡 {t.log}</div>
+            <div ref={logRef} style={{flex:1,overflowY:"auto",padding:"0 9px 9px",minHeight:0}}>
+              {log.map((l,i)=>(
+                <div key={i} style={{fontSize:9.5,color:"#555",borderBottom:"1px solid #f0f0f0",padding:"2px 0",lineHeight:1.4}}>{l}</div>
+              ))}
               {!log.length&&<div style={{fontSize:11,color:"#bbb",fontStyle:"italic"}}>{lang==="ru"?"Пока пусто...":"Empty so far..."}</div>}
             </div>
           </div>
         </div>
       </div>
 
-      {showLLM&&<LLMModal cfg={llmCfg} onSave={handleSaveLLM} onClose={()=>setShowLLM(false)} t={t}/>}
+      {/* Modals */}
+      {showLLM&&<LLMModal cfg={llmCfg} onSave={v=>{setLlmCfg(v);saveLS("llmCfg",v);setShowLLM(false);}} onClose={()=>setShowLLM(false)} t={t}/>}
       {showSettings&&<SettingsModal agentDefs={agentDefs} onSave={handleSaveSettings} onClose={()=>setShowSettings(false)} t={t}/>}
       {showArchive&&<ArchiveModal files={archiveFiles} onSave={handleSaveArchive} onClose={()=>setShowArchive(false)} t={t}/>}
 
-      {showResult&&(<div style={{position:"fixed",inset:0,background:"#00000055",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={e=>{if(e.target===e.currentTarget)setShowResult(false);}}><div style={{background:"#fff",borderRadius:16,maxWidth:680,width:"100%",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 16px 64px #0005"}}><div style={{padding:"14px 20px",borderBottom:"1px solid #eee",display:"flex",alignItems:"center",justifyContent:"space-between"}}><div><b style={{fontSize:16,color:"#222"}}>{t.finalResults}</b><span style={{fontSize:11,color:"#888",marginLeft:10}}>{t.patternNames[pattern]}</span></div><button onClick={()=>setShowResult(false)} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#888"}}>✕</button></div><div style={{padding:20,display:"flex",flexDirection:"column",gap:20}}><div><div style={{fontWeight:700,fontSize:15,color:"#2a8a50",marginBottom:12}}>{t.teamResult}</div>{boardCards.map((c,i)=>renderResult(c,i))}</div>{managerReport&&(<div><div style={{fontWeight:700,fontSize:15,color:"#c8860a",marginBottom:8}}>{managerDef?.emoji} {t.managerReport}</div><div style={{fontSize:13,color:"#444",lineHeight:1.8,whiteSpace:"pre-line",background:"#fdf6e8",borderRadius:10,padding:"12px 14px"}}>{managerReport}</div></div>)}</div></div></div>)}
+      {/* Result modal */}
+      {showResult&&(
+        <div style={{position:"fixed",inset:0,background:"#00000055",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={e=>{if(e.target===e.currentTarget)setShowResult(false);}}>
+          <div style={{background:"#fff",borderRadius:16,maxWidth:680,width:"100%",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 16px 64px #0005"}}>
+            <div style={{padding:"14px 20px",borderBottom:"1px solid #eee",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div><b style={{fontSize:16}}>{t.finalResults}</b><span style={{fontSize:11,color:"#888",marginLeft:10}}>{t.patternNames[pattern]}</span></div>
+              <button onClick={()=>setShowResult(false)} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#888"}}>✕</button>
+            </div>
+            <div style={{padding:20,display:"flex",flexDirection:"column",gap:20}}>
+              <div><div style={{fontWeight:700,fontSize:15,color:"#2a8a50",marginBottom:12}}>{t.teamResult}</div>{boardCards.map((c,i)=>renderResult(c,i))}</div>
+              {managerReport&&(<div><div style={{fontWeight:700,fontSize:15,color:"#c8860a",marginBottom:8}}>{manDef?.emoji} {t.managerReport}</div><div style={{fontSize:13,color:"#444",lineHeight:1.8,whiteSpace:"pre-line",background:"#fdf6e8",borderRadius:10,padding:"12px 14px"}}>{managerReport}</div></div>)}
+              {!managerReport&&phase==="done"&&<div style={{fontSize:12,color:"#bbb",fontStyle:"italic"}}>⏳ {lang==="ru"?"Отчёт генерируется...":"Generating report..."}</div>}
+            </div>
+          </div>
+        </div>
+      )}
 
-      <div style={{background:"#fff",borderTop:"1px solid #eee",padding:"5px 16px",textAlign:"center",fontSize:10,color:"#aaa"}}>
-        {t.author} · <a href="https://youtube.com/@maratArtificialIntelligence" target="_blank" rel="noreferrer" style={{color:"#aaa"}}>YouTube @maratArtificialIntelligence</a> · <a href="https://vk.com/ProfAI" target="_blank" rel="noreferrer" style={{color:"#aaa"}}>vk.com/ProfAI</a>
+      <div style={{background:"#fff",borderTop:"1px solid #eee",padding:"3px 14px",textAlign:"center",fontSize:9.5,color:"#aaa",flexShrink:0}}>
+        {t.author} · <a href="https://youtube.com/@maratArtificialIntelligence" target="_blank" rel="noreferrer" style={{color:"#aaa"}}>YouTube</a> · <a href="https://vk.com/ProfAI" target="_blank" rel="noreferrer" style={{color:"#aaa"}}>vk.com/ProfAI</a>
       </div>
     </div>
   );
