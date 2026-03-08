@@ -73,7 +73,7 @@ const T = {
       ideas:"Generate creative, actionable ideas. Be specific and original.",
       analyst:"Provide structured analysis with clear conclusions backed by evidence.",
       writer:"Write clear, well-structured content adapted to the goal.",
-      critic:"Your response MUST always consist of exactly 5 numbered points. Each point is a specific observation, issue, or approval. No preamble or conclusions.",
+      critic:"Your response MUST always consist of exactly 5 numbered points. Each point is a specific observation, issue, or approval. End with VERDICT: APPROVED or VERDICT: NEEDS REVISION.",
     },
     zonePrompts:{
       common:"You are preparing to start work. What do you plan? (1 sentence)",
@@ -102,6 +102,21 @@ const T = {
     speedLabel:"Speed", nowWorking:"Working:",
     stageLabels:{ agent:"Agent", zone:"Zone", receives:"Receives", loop:"Loop" },
     tableHeaders:["#","Agent","Zone","Receives","Loop"],
+    mcpSettings:"MCP Servers",
+    mcpAdd:"Add Server",
+    mcpName:"Server name",
+    mcpUrl:"Server URL (SSE)",
+    mcpSave:"Save",
+    mcpRemove:"Remove",
+    mcpEnabled:"Active",
+    mcpContext:"Context",
+    mcpSaveResult:"Save result",
+    mcpToolsLabel:"Use as agent tools",
+    fullLog:"Full Log",
+    fullLogCopy:"Copy all",
+    fullLogClear:"Clear",
+    llmRequests:"LLM calls",
+    allEvents:"All events",
   },
   ru: {
     appName:"Little AI Beings", author:"Проект создан Marat Levykin",
@@ -174,7 +189,7 @@ const T = {
       ideas:"Генерируй творческие, применимые идеи. Будь конкретным и оригинальным.",
       analyst:"Давай структурированный анализ с чёткими выводами подкреплёнными данными.",
       writer:"Пиши чёткий хорошо структурированный контент адаптированный к цели.",
-      critic:"Твой ответ ВСЕГДА должен состоять ровно из 5 пронумерованных пунктов. Каждый пункт — конкретное замечание, проблема или одобрение. Без вступлений и выводов.",
+      critic:"Твой ответ ВСЕГДА должен состоять ровно из 5 пронумерованных пунктов. Каждый пункт — конкретное замечание, проблема или одобрение. Заверши свой ответ строкой ВЕРДИКТ: ОДОБРЕНО или ВЕРДИКТ: ТРЕБУЕТ ДОРАБОТКИ.",
     },
     zonePrompts:{
       common:"Готовишься приступить к работе. Что планируешь? (1 предложение)",
@@ -203,6 +218,21 @@ const T = {
     speedLabel:"Скорость", nowWorking:"Работает:",
     stageLabels:{ agent:"Агент", zone:"Зона", receives:"Получает", loop:"Цикл" },
     tableHeaders:["#","Агент","Зона","Получает","Цикл"],
+    mcpSettings:"MCP-серверы",
+    mcpAdd:"Добавить сервер",
+    mcpName:"Название сервера",
+    mcpUrl:"URL сервера (SSE)",
+    mcpSave:"Сохранить",
+    mcpRemove:"Удалить",
+    mcpEnabled:"Активен",
+    mcpContext:"Контекст",
+    mcpSaveResult:"Сохр. результат",
+    mcpToolsLabel:"Использовать как инструменты агентов",
+    fullLog:"Полный лог",
+    fullLogCopy:"Копировать всё",
+    fullLogClear:"Очистить",
+    llmRequests:"Запросы LLM",
+    allEvents:"Все события",
   },
 };
 
@@ -254,6 +284,14 @@ const PLATFORM_COLORS = { Instagram:"#e040a0", Telegram:"#2080d0", LinkedIn:"#00
 const loadLS=(k,fb)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):fb;}catch{return fb;}};
 const saveLS=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
 
+function ts() {
+  const d = new Date();
+  return "[" + d.getHours().toString().padStart(2,"0") + ":" +
+    d.getMinutes().toString().padStart(2,"0") + ":" +
+    d.getSeconds().toString().padStart(2,"0") + "." +
+    d.getMilliseconds().toString().padStart(3,"0") + "]";
+}
+
 function makeAgentDefs(lang) {
   return DEFAULT_AGENTS.map(d=>({
     ...d,
@@ -288,6 +326,19 @@ function getZonePos(zoneId, idx, total) {
   return {x:z.x+32+(idx%cols)*70, y:z.y+50+Math.floor(idx/cols)*52};
 }
 
+// ── CRITIC VERDICT HELPER ──────────────────────────────────────────────────
+function criticNeedsRevision(text) {
+  if (!text) return false;
+  const t = text.toLowerCase();
+  // Check explicit VERDICT lines first
+  if (t.includes("verdict: approved") || t.includes("вердикт: одобрено")) return false;
+  if (t.includes("verdict: needs revision") || t.includes("вердикт: требует доработки")) return true;
+  // Fallback: negative keywords
+  const neg = ["not approved","rejected","fail","poor","missing","incomplete","rework","rewrite",
+                "недостаточно","не соответствует","плохо","переделать","отклонено","needs revision","требует доработки"];
+  return neg.some(s=>t.includes(s));
+}
+
 function buildPlan(pattern, team, instructions, hasArchive, t) {
   const has = id => team.includes(id);
   const stages = [];
@@ -312,8 +363,11 @@ function buildPlan(pattern, team, instructions, hasArchive, t) {
     const s_synth = add("manager","manager",["task","sharedBoard:all"],validTeam.length?validTeam:[s1],null,"Team results");
     const s_write = has("writer") ? add("writer","lab",["task","inbox"],[s_synth],null,"Max synthesis") : null;
     if (has("critic") && s_write) {
+      // critic gets the writer's output and MUST pass verdict back to manager
       const s_crit = add("critic","lab",["task","inbox","sharedBoard:prev"],[s_write],{backTo:s_synth,max:3},"Writer draft");
-      add(has("writer")?"writer":"manager","board",["task","inbox","sharedBoard:prev","sharedBoard:all"],[s_crit],null,"After review");
+      // manager reads critic verdict before writer publishes
+      const s_mgr2 = add("manager","manager",["task","sharedBoard:all","criticVerdict"],[s_crit],null,"Critic verdict");
+      add(has("writer")?"writer":"manager","board",["task","inbox","sharedBoard:prev","sharedBoard:all"],[s_mgr2],null,"After review");
     } else {
       add(has("writer")?"writer":"manager","board",["task","inbox","sharedBoard:prev"],[s_write||s_synth],null,"Max synthesis");
     }
@@ -365,7 +419,9 @@ function buildPlan(pattern, team, instructions, hasArchive, t) {
     const s_write = has("writer") ? add("writer","lab",["task","inbox","sharedBoard:all"],exchStages.length?exchStages:validIndep,null,"Exchange results") : null;
     if (has("critic") && s_write) {
       const s_crit = add("critic","lab",["task","sharedBoard:prev"],[s_write],{backTo:s_write,max:3},"Writer draft");
-      add(has("writer")?"writer":"manager","board",["task","inbox","sharedBoard:all"],[s_crit],null,"After review");
+      // manager reads critic verdict
+      const s_mgr2 = add("manager","manager",["task","sharedBoard:all","criticVerdict"],[s_crit],null,"Critic verdict");
+      add(has("writer")?"writer":"manager","board",["task","inbox","sharedBoard:all"],[s_mgr2],null,"After review");
     } else {
       add(has("writer")?"writer":"manager","board",["task","sharedBoard:all"],s_write?[s_write]:exchStages,null,"Final exchange");
     }
@@ -379,7 +435,7 @@ function buildPlan(pattern, team, instructions, hasArchive, t) {
   return stages;
 }
 
-async function callLLM(cfg, system, user, maxTokens=400, timeoutMs=15000) {
+async function callLLM(cfg, system, user, maxTokens=400, timeoutMs=15000, mcpServers=[]) {
   const controller = new AbortController();
   const timer = setTimeout(()=>controller.abort(), timeoutMs);
   try {
@@ -390,24 +446,100 @@ async function callLLM(cfg, system, user, maxTokens=400, timeoutMs=15000) {
           messages:[{role:"system",content:system},{role:"user",content:user}]}),
       });
       const d = await res.json();
-      return {ok:true, text:((d.message&&d.message.content)||"").trim().replace(/^#+\s*/gm,"")||"..."};
+      return {ok:true, text:((d.message&&d.message.content)||"").trim().replace(/^#+\s*/gm,"")||"...", raw:d};
+    }
+    const body = {
+      model:cfg.model||"claude-sonnet-4-20250514",
+      max_tokens:maxTokens,
+      system,
+      messages:[{role:"user",content:user}]
+    };
+    if (mcpServers && mcpServers.length > 0) {
+      body.mcp_servers = mcpServers.map(s=>{
+        const entry = {type:"url", url:s.url, name:s.name};
+        if (s.authToken) entry.authorization_token = s.authToken;
+        return entry;
+      });
     }
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method:"POST", headers:{"Content-Type":"application/json"}, signal:controller.signal,
-      body:JSON.stringify({model:cfg.model||"claude-sonnet-4-20250514",max_tokens:maxTokens,system,
-        messages:[{role:"user",content:user}]}),
+      body:JSON.stringify(body),
     });
     const d = await res.json();
-    const text=((d.content&&d.content[0]&&d.content[0].text)||"").trim().replace(/^#+\s*/gm,"");
-    if(!text||text.length<2) return {ok:true,text:"..."};
-    return {ok:true, text};
+    const textBlocks = (d.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
+    const text = textBlocks.trim().replace(/^#+\s*/gm,"");
+    if(!text||text.length<2) return {ok:true, text:"...", raw:d};
+    return {ok:true, text, raw:d};
   } catch(e) {
-    if(e.name==="AbortError") return {ok:false, text:"timeout"};
-    return {ok:false, text:"error"};
+    if(e.name==="AbortError") return {ok:false, text:"timeout", raw:null};
+    return {ok:false, text:"error: "+e.message, raw:null};
   } finally { clearTimeout(timer); }
 }
 
-function buildPrompt(agentId, stage, systemState, agentDefs, archiveFiles, t, lang) {
+// Multi-turn MCP call: sends request, handles tool_use blocks, loops until final text
+async function callLLMWithMCP(cfg, system, user, maxTokens=600, timeoutMs=30000, mcpServers=[]) {
+  if (!mcpServers.length) return callLLM(cfg, system, user, maxTokens, timeoutMs, []);
+  const controller = new AbortController();
+  const timer = setTimeout(()=>controller.abort(), timeoutMs);
+  const messages = [{role:"user", content:user}];
+  const toolUseLog = []; // track tool calls for logging
+  try {
+    for (let turn = 0; turn < 8; turn++) {
+      const body = {
+        model: cfg.model||"claude-sonnet-4-20250514",
+        max_tokens: maxTokens,
+        system,
+        messages,
+        mcp_servers: mcpServers.map(s=>({type:"url", url:s.url, name:s.name}))
+      };
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method:"POST", headers:{"Content-Type":"application/json"}, signal:controller.signal,
+        body:JSON.stringify(body),
+      });
+      const d = await res.json();
+      if (d.error) return {ok:false, text:"API error: "+(d.error.message||JSON.stringify(d.error)), raw:d, toolUseLog};
+
+      const content = d.content || [];
+      // Collect text from this turn
+      const textBlocks = content.filter(b=>b.type==="text").map(b=>b.text).join("\n").trim();
+      const toolUseBlocks = content.filter(b=>b.type==="tool_use");
+      const mcpToolResults = content.filter(b=>b.type==="mcp_tool_use");
+
+      // If stop_reason is end_turn or no tool calls, we're done
+      if (d.stop_reason === "end_turn" || (toolUseBlocks.length === 0 && mcpToolResults.length === 0)) {
+        const finalText = textBlocks.replace(/^#+\s*/gm,"");
+        return {ok:true, text:finalText||"...", raw:d, toolUseLog};
+      }
+
+      // Push assistant message with all content blocks
+      messages.push({role:"assistant", content});
+
+      // Build tool_result messages for any tool_use blocks
+      const toolResults = [];
+      for (const tb of toolUseBlocks) {
+        toolUseLog.push({name:tb.name, input:tb.input});
+        // For MCP tools the platform handles execution; we just acknowledge
+        toolResults.push({type:"tool_result", tool_use_id:tb.id, content:"Tool executed."});
+      }
+      for (const mt of mcpToolResults) {
+        toolUseLog.push({name:mt.name, input:mt.input});
+      }
+      if (toolResults.length > 0) {
+        messages.push({role:"user", content:toolResults});
+      } else {
+        // No tool results to send back but also not end_turn — break to avoid infinite loop
+        const finalText = textBlocks.replace(/^#+\s*/gm,"");
+        return {ok:true, text:finalText||"...", raw:d, toolUseLog};
+      }
+    }
+    return {ok:false, text:"Max MCP turns reached", raw:null, toolUseLog};
+  } catch(e) {
+    if(e.name==="AbortError") return {ok:false, text:"timeout", raw:null, toolUseLog};
+    return {ok:false, text:"error: "+e.message, raw:null, toolUseLog};
+  } finally { clearTimeout(timer); }
+}
+
+function buildPrompt(agentId, stage, systemState, agentDefs, archiveFiles, t, lang, cfg) {
   const def = agentDefs.find(d=>d.id===agentId);
   if (!def) return {sys:"",user:""};
   const gc = systemState.globalCtx;
@@ -420,40 +552,44 @@ function buildPrompt(agentId, stage, systemState, agentDefs, archiveFiles, t, la
   const ctxParts = [];
   if (stage.contextFrom.includes("inbox")) {
     const msgs = inbox[agentId];
-    const msg = Array.isArray(msgs) ? msgs.slice(-1)[0] : null;
+    const limit = cfg&&cfg.contextInboxMessages ? cfg.contextInboxMessages : 1;
+    const recentMsgs = Array.isArray(msgs) ? msgs.slice(-limit) : (msgs ? [msgs] : []);
+    const msg = recentMsgs.slice(-1)[0];
     if (msg && msg.text) ctxParts.push((lang==="ru"?"Твоё задание: ":"Your assignment: ")+msg.text);
   }
+  if (stage.contextFrom.includes("criticVerdict")) {
+    const criticBoard = sharedBoard["critic"];
+    if (criticBoard && criticBoard.text) {
+      ctxParts.push((lang==="ru"?"Вердикт критика:\n":"Critic verdict:\n")+criticBoard.text);
+    }
+  }
   if (stage.contextFrom.includes("sharedBoard:all")) {
-    const entries = Object.entries(sharedBoard).filter(function(e){return e[1]&&e[1].text;});
+    const limit = cfg&&cfg.contextBoardEntries ? cfg.contextBoardEntries : 10;
+    const entries = Object.entries(sharedBoard).filter(e=>e[1]&&e[1].text).slice(-limit);
     if (entries.length) {
+      const charLimit = cfg&&cfg.contextPrevResultChars ? cfg.contextPrevResultChars : 500;
       ctxParts.push((lang==="ru"?"Результаты команды:\n":"Team results:\n")+
-        entries.map(function(e){
-          const d=agentDefs.find(function(x){return x.id===e[0];});
-          return (d?d.emoji:"")+" "+(d?d.name:e[0])+": "+e[1].text;
-        }).join("\n"));
+        entries.map(e=>{const d=agentDefs.find(x=>x.id===e[0]);return (d?d.emoji:"")+" "+(d?d.name:e[0])+": "+e[1].text.slice(0,charLimit);}).join("\n"));
     }
   }
   if (stage.contextFrom.includes("sharedBoard:prev")) {
-    const prevStage = stages.slice().reverse().find(function(s){
-      return s.status==="done"&&s.agentId!==agentId&&s.step<stage.step;
-    });
+    const prevStage = stages.slice().reverse().find(s=>s.status==="done"&&s.agentId!==agentId&&s.step<stage.step);
     if (prevStage) {
       const prev = sharedBoard[prevStage.agentId];
       if (prev && prev.text) {
-        const pd = agentDefs.find(function(d){return d.id===prevStage.agentId;});
+        const pd = agentDefs.find(d=>d.id===prevStage.agentId);
+        const charLimit = cfg&&cfg.contextPrevResultChars ? cfg.contextPrevResultChars : 500;
         ctxParts.push((lang==="ru"?"Результат предыдущего агента:\n":"Previous agent result:\n")+
-          (pd?pd.emoji:"")+" "+(pd?pd.name:prevStage.agentId)+": "+prev.text);
+          (pd?pd.emoji:"")+" "+(pd?pd.name:prevStage.agentId)+": "+prev.text.slice(0,charLimit));
       }
     }
   }
   if (stage.contextFrom.includes("archive") && archiveFiles.length) {
-    ctxParts.push(t.archiveCtxLabel+archiveFiles.map(function(f){return "["+f.name+"]: "+f.text;}).join("\n\n"));
+    const charLimit = cfg&&cfg.contextArchiveChars ? cfg.contextArchiveChars : 2000;
+    ctxParts.push(t.archiveCtxLabel+archiveFiles.map(f=>"["+f.name+"]: "+f.text.slice(0,charLimit)).join("\n\n"));
   }
   if (stage.contextFrom.includes("team") && gc.team) {
-    const teamDesc = gc.team.map(function(id){
-      const d=agentDefs.find(function(x){return x.id===id;});
-      return (d?d.name:id)+"("+(d?d.role:id)+")";
-    }).join(", ");
+    const teamDesc = gc.team.map(id=>{const d=agentDefs.find(x=>x.id===id);return (d?d.name:id)+"("+(d?d.role:id)+")";}).join(", ");
     ctxParts.push((lang==="ru"?"Команда: ":"Team: ")+teamDesc);
   }
 
@@ -480,8 +616,16 @@ function buildPrompt(agentId, stage, systemState, agentDefs, archiveFiles, t, la
         : (isCodeTask ? " Write complete working code to solve the task." : " Complete the task yourself, give a full detailed result."))
     : "";
 
+  // For manager reading critic verdict
+  let managerCriticExtra = "";
+  if (agentId==="manager" && stage.contextFrom.includes("criticVerdict")) {
+    managerCriticExtra = lang==="ru"
+      ? " Проанализируй вердикт критика. Если он требует доработки — выдай конкретные инструкции писателю по улучшению. Если одобрено — дай команду публиковать."
+      : " Analyse the critic's verdict. If revision needed — give specific instructions to the writer. If approved — instruct to publish.";
+  }
+
   const basePrompt = (zpm && zpm[stage.zone]) ? zpm[stage.zone] : "What are you doing right now?";
-  const zonePrompt = basePrompt + boardExtra + soloLabExtra;
+  const zonePrompt = basePrompt + boardExtra + soloLabExtra + managerCriticExtra;
 
   const sysPromptRule = isSoloMode
     ? (lang==="ru"
@@ -494,6 +638,198 @@ function buildPrompt(agentId, stage, systemState, agentDefs, archiveFiles, t, la
   const sys = (lang==="ru"?"Ты":"You are")+" "+def.name+" - "+def.role+". "+(lang==="ru"?"Навыки":"Skills")+": "+def.skills+".\n"+(lang==="ru"?"Задача":"Task")+': "'+gc.task+'".'+patCtx+ctx+sysPromptRule;
 
   return {sys, user: zonePrompt};
+}
+
+// ── MCP SETTINGS MODAL ────────────────────────────────────────────────────
+function MCPModal({servers, onSave, onClose, t}) {
+  const [items, setItems] = useState(servers.map(s=>({...s})));
+  const [newName, setNewName] = useState("");
+  const [newUrl, setNewUrl] = useState("");
+
+  const add = () => {
+    if (!newName.trim() || !newUrl.trim()) return;
+    setItems(p=>[...p, {id:Date.now(), name:newName.trim(), url:newUrl.trim(), enabled:true, useForContext:true, saveResult:false}]);
+    setNewName(""); setNewUrl("");
+  };
+  const toggle = (id, field) => setItems(p=>p.map(s=>s.id===id?{...s,[field]:!s[field]}:s));
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"#00000066",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{background:"#fff",borderRadius:16,maxWidth:560,width:"100%",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 16px 64px #0005"}}>
+        <div style={{padding:"14px 20px",borderBottom:"1px solid #eee",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <b style={{fontSize:16}}>{t.mcpSettings}</b>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#888"}}>×</button>
+        </div>
+        <div style={{padding:20,display:"flex",flexDirection:"column",gap:12}}>
+          {items.length===0 && <div style={{fontSize:12,color:"#bbb",fontStyle:"italic"}}>No MCP servers configured.</div>}
+          {items.map(s=>(
+            <div key={s.id} style={{border:"1.5px solid #4060c044",borderRadius:9,padding:"10px 12px",background:"#f8f8ff"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                <span style={{fontSize:16}}>🔌</span>
+                <input value={s.name} onChange={e=>setItems(p=>p.map(x=>x.id===s.id?{...x,name:e.target.value}:x))}
+                  style={{flex:1,border:"1.5px solid #c0c8f0",borderRadius:5,padding:"3px 8px",fontSize:12,fontWeight:700,color:"#4060c0"}}/>
+                <button onClick={()=>setItems(p=>p.filter(x=>x.id!==s.id))} style={{...S.btn("#fee","#d04040"),fontSize:11,padding:"2px 8px"}}>{t.mcpRemove}</button>
+              </div>
+              <input value={s.url} onChange={e=>setItems(p=>p.map(x=>x.id===s.id?{...x,url:e.target.value}:x))}
+                placeholder="https://mcp.example.com/sse"
+                style={{width:"100%",border:"1.5px solid #ddd",borderRadius:5,padding:"4px 8px",fontSize:11,color:"#333",marginBottom:5,boxSizing:"border-box"}}/>
+              <input value={s.authToken||""} onChange={e=>setItems(p=>p.map(x=>x.id===s.id?{...x,authToken:e.target.value}:x))}
+                placeholder="Auth token (optional, for OAuth servers like Miro)"
+                style={{width:"100%",border:"1.5px solid #f0d080",borderRadius:5,padding:"4px 8px",fontSize:11,color:"#555",marginBottom:8,boxSizing:"border-box",background:"#fffdf0"}}/>
+              <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                {[["enabled",t.mcpEnabled],["useForContext",t.mcpContext],["saveResult",t.mcpSaveResult]].map(([field,label])=>(
+                  <label key={field} style={{display:"flex",alignItems:"center",gap:4,fontSize:11,color:"#555",cursor:"pointer"}}>
+                    <input type="checkbox" checked={!!s[field]} onChange={()=>toggle(s.id,field)} style={{accentColor:"#4060c0"}}/>
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+          <div style={{borderTop:"1px dashed #ddd",paddingTop:12}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#888",marginBottom:8}}>{t.mcpAdd}</div>
+            <div style={{display:"flex",gap:8,marginBottom:6}}>
+              <input value={newName} onChange={e=>setNewName(e.target.value)} placeholder={t.mcpName}
+                style={{flex:1,border:"1.5px solid #ddd",borderRadius:6,padding:"5px 8px",fontSize:12,color:"#333"}}/>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <input value={newUrl} onChange={e=>setNewUrl(e.target.value)} placeholder={t.mcpUrl}
+                style={{flex:1,border:"1.5px solid #ddd",borderRadius:6,padding:"5px 8px",fontSize:12,color:"#333"}}/>
+              <button onClick={add} disabled={!newName.trim()||!newUrl.trim()} style={{...S.btn("#4060c0","#fff"),opacity:!newName.trim()||!newUrl.trim()?0.5:1,fontSize:12}}>
+                {t.addBtn}
+              </button>
+            </div>
+          </div>
+        </div>
+        <div style={{padding:"12px 20px",borderTop:"1px solid #eee",display:"flex",gap:10,justifyContent:"flex-end"}}>
+          <button onClick={onClose} style={S.btn("#eee","#555")}>{t.cancelBtn}</button>
+          <button onClick={()=>onSave(items)} style={S.btn("#4060c0","#fff")}>{t.mcpSave}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── FULL LOG MODAL ─────────────────────────────────────────────────────────
+function LogBlock({label, content, color, maxH=120}) {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = content && content.length > 300;
+  const shown = (!isLong || expanded) ? content : content.slice(0,300)+"…";
+  return (
+    <div style={{marginBottom:6}}>
+      <div style={{fontSize:9,color:"#6c7086",marginBottom:2,textTransform:"uppercase",letterSpacing:0.5,display:"flex",alignItems:"center",gap:6}}>
+        {label}
+        {isLong && <button onClick={()=>setExpanded(p=>!p)} style={{...S.btn("transparent","#6c7086"),fontSize:9,padding:"0 4px",border:"1px solid #444"}}>
+          {expanded?"▲ collapse":"▼ expand ("+content.length+" chars)"}
+        </button>}
+        <button onClick={()=>navigator.clipboard&&navigator.clipboard.writeText(content||"")} style={{...S.btn("transparent","#555"),fontSize:9,padding:"0 4px",border:"1px solid #333"}}>copy</button>
+      </div>
+      <pre style={{margin:0,fontSize:10,color,whiteSpace:"pre-wrap",wordBreak:"break-word",background:"#13131f",borderRadius:5,padding:"6px 9px",maxHeight:expanded?600:maxH,overflowY:"auto",lineHeight:1.5}}>
+        {shown||"(empty)"}
+      </pre>
+    </div>
+  );
+}
+
+function FullLogModal({entries, onClose, onClear, t}) {
+  const [filter, setFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const [expandedIdx, setExpandedIdx] = useState(null);
+  const scrollRef = useRef(null);
+
+  // scroll to bottom on new entries
+  useEffect(()=>{
+    if(scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  },[entries.length]);
+
+  const filtered = entries.filter(e=>{
+    if (filter==="llm" && e.type!=="llm") return false;
+    if (filter==="mcp" && e.type!=="mcp") return false;
+    if (filter==="event" && (e.type==="llm"||e.type==="mcp")) return false;
+    if (search) {
+      const hay = [e.text,e.system,e.user,e.response,e.agent].filter(Boolean).join(" ").toLowerCase();
+      if (!hay.includes(search.toLowerCase())) return false;
+    }
+    return true;
+  });
+
+  const fullText = filtered.map(e=>{
+    let s = e.timestamp+" ["+e.type.toUpperCase()+"]"+(e.agent?" "+e.agent:"")+"\n";
+    if (e.type==="llm"||e.type==="mcp") s += "SYSTEM:\n"+e.system+"\nUSER:\n"+e.user+"\nRESPONSE:\n"+e.response;
+    else s += e.text||"";
+    return s;
+  }).join("\n\n---\n\n");
+
+  const typeColor = t2 => ({llm:"#89b4fa",event:"#a6adc8",error:"#f38ba8",mcp:"#cba6f7"}[t2]||"#a6adc8");
+  const typeBadgeBg = t2 => ({llm:"#1a3a5c",event:"#2a2a3e",error:"#3a1010",mcp:"#2e1a4a"}[t2]||"#2a2a3e");
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"#00000077",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      {/* Fixed-height outer box, no flex children stretching */}
+      <div style={{background:"#1e1e2e",borderRadius:14,width:"100%",maxWidth:960,height:"90vh",boxShadow:"0 16px 64px #000a",border:"1px solid #313244",display:"flex",flexDirection:"column"}}>
+
+        {/* ── Header (fixed) ── */}
+        <div style={{flexShrink:0,padding:"10px 16px",borderBottom:"1px solid #313244",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",background:"#181825",borderRadius:"14px 14px 0 0"}}>
+          <b style={{fontSize:15,color:"#cdd6f4"}}>📋 {t.fullLog}</b>
+          <div style={{display:"flex",gap:3,background:"#13131f",borderRadius:7,border:"1px solid #313244",padding:"2px 3px"}}>
+            {[["all","All"],["llm","LLM"],["mcp","MCP"],["event","Events"]].map(([v,l])=>(
+              <button key={v} onClick={()=>setFilter(v)} style={{...S.btn(filter===v?"#4060c0":"transparent",filter===v?"#fff":"#6c7086"),fontSize:11,padding:"3px 9px",borderRadius:5,border:"none"}}>
+                {l}
+              </button>
+            ))}
+          </div>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search..."
+            style={{flex:1,minWidth:80,maxWidth:200,background:"#13131f",border:"1px solid #45475a",borderRadius:6,padding:"4px 9px",fontSize:11,color:"#cdd6f4",outline:"none"}}/>
+          <span style={{fontSize:10,color:"#585b70"}}>{filtered.length}/{entries.length}</span>
+          <button onClick={()=>navigator.clipboard&&navigator.clipboard.writeText(fullText)} style={{...S.btn("#313244","#89b4fa"),fontSize:11,border:"1px solid #45475a"}}>📋 Copy</button>
+          <button onClick={onClear} style={{...S.btn("#313244","#f38ba8"),fontSize:11,border:"1px solid #45475a"}}>🗑 Clear</button>
+          <button onClick={onClose} style={{...S.btn("#313244","#cdd6f4"),fontSize:15,border:"1px solid #45475a",padding:"3px 10px"}}>×</button>
+        </div>
+
+        {/* ── Scrollable entries (takes remaining height) ── */}
+        <div ref={scrollRef} style={{flex:"1 1 0",overflowY:"scroll",padding:"8px 12px",display:"flex",flexDirection:"column",gap:5}}>
+          {filtered.length===0 && <div style={{color:"#585b70",fontSize:12,textAlign:"center",marginTop:60}}>No entries</div>}
+          {filtered.map((e,i)=>{
+            const isLLM = e.type==="llm"||e.type==="mcp";
+            const isExp = expandedIdx===i;
+            return (
+              <div key={i} style={{borderRadius:7,border:"1px solid "+typeColor(e.type)+"44",overflow:"hidden",flexShrink:0,background:"#181825"}}>
+                <div onClick={()=>isLLM&&setExpandedIdx(isExp?null:i)}
+                  style={{display:"flex",alignItems:"center",gap:7,padding:"5px 9px",cursor:isLLM?"pointer":"default",userSelect:"none",background:isExp?"#1e1e3a":"transparent"}}>
+                  <span style={{fontSize:9,color:"#585b70",flexShrink:0,fontFamily:"monospace",whiteSpace:"nowrap"}}>{e.timestamp}</span>
+                  <span style={{fontSize:9,fontWeight:700,color:typeColor(e.type),background:typeBadgeBg(e.type),padding:"1px 6px",borderRadius:3,flexShrink:0}}>{e.type.toUpperCase()}</span>
+                  {e.agent&&<span style={{fontSize:9,color:"#a6e3a1",flexShrink:0}}>{e.agent}</span>}
+                  <span style={{fontSize:10,color:"#cdd6f4",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    {isLLM?(e.user||"").slice(0,100):(e.text||"")}
+                  </span>
+                  {isLLM&&<span style={{fontSize:9,color:"#585b70",flexShrink:0}}>{isExp?"▲":"▼"}</span>}
+                </div>
+                {isLLM&&isExp&&(
+                  <div style={{padding:"8px 12px 10px",borderTop:"1px solid #313244"}}>
+                    {e.toolUseLog&&e.toolUseLog.length>0&&(
+                      <div style={{marginBottom:8}}>
+                        <div style={{fontSize:9,color:"#6c7086",marginBottom:3,textTransform:"uppercase"}}>🔧 Tools called</div>
+                        {e.toolUseLog.map((tl,j)=>(
+                          <div key={j} style={{background:"#13131f",borderRadius:5,padding:"4px 8px",marginBottom:3,fontSize:10,color:"#cba6f7"}}>
+                            <b>{tl.name}</b>
+                            {tl.input&&<pre style={{margin:"2px 0 0",color:"#a6adc8",fontSize:9,whiteSpace:"pre-wrap"}}>{JSON.stringify(tl.input,null,2)}</pre>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <LogBlock label="SYSTEM PROMPT" content={e.system||""} color="#a6da95"/>
+                    <LogBlock label="USER MESSAGE" content={e.user||""} color="#89dceb"/>
+                    <LogBlock label="RESPONSE" content={e.response||"(pending)"} color="#cdd6f4" maxH={200}/>
+                    {e.rawResponse&&<LogBlock label="RAW API JSON" content={e.rawResponse} color="#f9e2af" maxH={100}/>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function Fig({x,y,color,emoji,agentStatus,figStyle,inLab}) {
@@ -562,65 +898,131 @@ function Arrow({x1,y1,x2,y2,color}) {
 }
 
 function LLMModal({cfg,onSave,onClose,t}) {
+  const [tab, setTab] = useState("connection");
   const [provider,setProvider]=useState(cfg.provider||"anthropic");
   const [apiKey,setApiKey]=useState(cfg.apiKey||"");
   const [ollamaUrl,setOllamaUrl]=useState(cfg.ollamaUrl||"http://localhost:11434");
   const [model,setModel]=useState(cfg.model||"");
   const [models,setModels]=useState(cfg.availableModels||[]);
   const [status,setStatus]=useState("idle");
+  // token limits
+  const [maxDefault,setMaxDefault]=useState(cfg.maxTokensDefault||500);
+  const [maxBoard,setMaxBoard]=useState(cfg.maxTokensBoard||1000);
+  const [maxCode,setMaxCode]=useState(cfg.maxTokensCode||1500);
+  const [maxPlan,setMaxPlan]=useState(cfg.maxTokensPlan||600);
+  const [maxReport,setMaxReport]=useState(cfg.maxTokensReport||500);
+  const [maxFinalize,setMaxFinalize]=useState(cfg.maxTokensFinalize||800);
+  // context limits
+  const [ctxBoard,setCtxBoard]=useState(cfg.contextBoardEntries||10);
+  const [ctxInbox,setCtxInbox]=useState(cfg.contextInboxMessages||1);
+  const [ctxArchive,setCtxArchive]=useState(cfg.contextArchiveChars||2000);
+  const [ctxPrev,setCtxPrev]=useState(cfg.contextPrevResultChars||500);
+
   const AM=["claude-sonnet-4-20250514","claude-opus-4-5","claude-haiku-4-5-20251001"];
   const testOllama=async(url)=>{setStatus("connecting");try{const r=await fetch(url+"/api/tags");const d=await r.json();const l=(d.models||[]).map(m=>m.name).filter(Boolean);setModels(l);if(l.length&&!l.includes(model))setModel(l[0]);setStatus("ok");}catch{setStatus("error");setModels([]);}};
   const testAnthropic=async(k)=>{setStatus("connecting");try{const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":k,"anthropic-version":"2023-06-01"},body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:10,messages:[{role:"user",content:"hi"}]})});const d=await r.json();if(d.error)throw new Error();setModels(AM);if(!AM.includes(model))setModel(AM[0]);setStatus("ok");}catch{setStatus("error");}};
   useEffect(()=>{if(provider==="anthropic")setModels(AM);},[provider]);
   const sc={idle:"#aaa",connecting:"#c8860a",ok:"#2a8a50",error:"#d04040"}[status];
-  const sd={idle:"o",connecting:"~",ok:"*",error:"x"}[status];
+  const sd={idle:"○",connecting:"~",ok:"●",error:"✕"}[status];
+
+  const NumInput = ({label, hint, value, onChange, min=10, max=8000}) => (
+    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+      <div style={{flex:1}}>
+        <div style={{fontSize:11,fontWeight:600,color:"#444"}}>{label}</div>
+        {hint&&<div style={{fontSize:9,color:"#aaa"}}>{hint}</div>}
+      </div>
+      <input type="number" min={min} max={max} value={value} onChange={e=>onChange(Math.max(min,Math.min(max,+e.target.value)))}
+        style={{width:80,border:"1.5px solid #ddd",borderRadius:6,padding:"4px 7px",fontSize:12,color:"#333",textAlign:"right"}}/>
+    </div>
+  );
+
   return(
     <div style={{position:"fixed",inset:0,background:"#00000066",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-      <div style={{background:"#fff",borderRadius:16,maxWidth:500,width:"100%",boxShadow:"0 16px 64px #0005"}}>
-        <div style={{padding:"14px 20px",borderBottom:"1px solid #eee",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+      <div style={{background:"#fff",borderRadius:16,maxWidth:520,width:"100%",maxHeight:"90vh",display:"flex",flexDirection:"column",boxShadow:"0 16px 64px #0005"}}>
+        <div style={{padding:"12px 20px",borderBottom:"1px solid #eee",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
           <b style={{fontSize:16}}>{t.llmSettings}</b>
-          <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#888"}}>x</button>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#888"}}>×</button>
         </div>
-        <div style={{padding:20,display:"flex",flexDirection:"column",gap:14}}>
-          <div>
-            <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:6}}>{t.llmProvider}</div>
-            <div style={{display:"flex",gap:8}}>
-              {["anthropic","ollama"].map(p=>(
-                <button key={p} onClick={()=>{setProvider(p);setStatus("idle");setModel("");}}
-                  style={{...S.btn(provider===p?"#4060c0":"#f4f4f8",provider===p?"#fff":"#555"),flex:1,border:"2px solid "+(provider===p?"#4060c0":"#ddd")}}>
-                  {p==="anthropic"?"Anthropic":"Ollama"}
-                </button>
-              ))}
-            </div>
-          </div>
-          {provider==="anthropic"&&<div>
-            <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:5}}>{t.llmAnthropicKey}</div>
-            <div style={{display:"flex",gap:8}}>
-              <input type="password" value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder={t.llmApiKeyPlaceholder} style={{flex:1,border:"1.5px solid #ddd",borderRadius:7,padding:"7px 10px",fontSize:13,color:"#333"}}/>
-              <button onClick={()=>testAnthropic(apiKey)} disabled={!apiKey.trim()} style={{...S.btn("#4060c0","#fff"),fontSize:12,opacity:!apiKey.trim()?0.5:1}}>{t.llmConnect}</button>
-            </div>
-          </div>}
-          {provider==="ollama"&&<div>
-            <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:5}}>{t.llmOllamaUrl}</div>
-            <div style={{display:"flex",gap:8}}>
-              <input value={ollamaUrl} onChange={e=>setOllamaUrl(e.target.value)} style={{flex:1,border:"1.5px solid #ddd",borderRadius:7,padding:"7px 10px",fontSize:13,color:"#333"}}/>
-              <button onClick={()=>testOllama(ollamaUrl)} style={{...S.btn("#a070c0","#fff"),fontSize:12}}>{t.llmConnect}</button>
-            </div>
-            <div style={{fontSize:11,color:"#aaa",marginTop:5}}>{t.llmOllamaHint}</div>
-          </div>}
-          <div style={{display:"flex",alignItems:"center",gap:8,background:"#f8f8f8",borderRadius:8,padding:"8px 12px"}}>
-            <span>{sd}</span><span style={{fontSize:13,color:sc,fontWeight:600}}>{t.llmStatus[status]}</span>
-          </div>
-          <div>
-            <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:5}}>{t.llmModel}</div>
-            {models.length>0
-              ?<select value={model} onChange={e=>setModel(e.target.value)} style={{width:"100%",border:"1.5px solid #ddd",borderRadius:7,padding:"7px 10px",fontSize:13,color:"#333",background:"#fff"}}>{models.map(m=><option key={m} value={m}>{m}</option>)}</select>
-              :<div style={{fontSize:12,color:"#aaa",fontStyle:"italic",padding:"6px 0"}}>{provider==="ollama"?t.llmNoModels:t.llmApiKeyPlaceholder}</div>}
-          </div>
+        {/* Tabs */}
+        <div style={{display:"flex",gap:2,padding:"8px 16px 0",borderBottom:"1px solid #eee",flexShrink:0}}>
+          {[["connection","🔌 Connection"],["limits","⚙️ Limits"]].map(([v,l])=>(
+            <button key={v} onClick={()=>setTab(v)} style={{...S.btn(tab===v?"#4060c0":"transparent",tab===v?"#fff":"#666"),fontSize:11,padding:"5px 12px",borderRadius:"6px 6px 0 0",border:"none",borderBottom:tab===v?"2px solid #4060c0":"2px solid transparent"}}>
+              {l}
+            </button>
+          ))}
         </div>
-        <div style={{padding:"12px 20px",borderTop:"1px solid #eee",display:"flex",gap:10,justifyContent:"flex-end"}}>
+
+        <div style={{flex:1,overflowY:"auto",padding:20,minHeight:0}}>
+          {tab==="connection" && <>
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:6}}>{t.llmProvider}</div>
+              <div style={{display:"flex",gap:8}}>
+                {["anthropic","ollama"].map(p=>(
+                  <button key={p} onClick={()=>{setProvider(p);setStatus("idle");setModel("");}}
+                    style={{...S.btn(provider===p?"#4060c0":"#f4f4f8",provider===p?"#fff":"#555"),flex:1,border:"2px solid "+(provider===p?"#4060c0":"#ddd")}}>
+                    {p==="anthropic"?"Anthropic":"Ollama"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {provider==="anthropic"&&<div style={{marginBottom:14}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:5}}>{t.llmAnthropicKey}</div>
+              <div style={{display:"flex",gap:8}}>
+                <input type="password" value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder={t.llmApiKeyPlaceholder} style={{flex:1,border:"1.5px solid #ddd",borderRadius:7,padding:"7px 10px",fontSize:13,color:"#333"}}/>
+                <button onClick={()=>testAnthropic(apiKey)} disabled={!apiKey.trim()} style={{...S.btn("#4060c0","#fff"),fontSize:12,opacity:!apiKey.trim()?0.5:1}}>{t.llmConnect}</button>
+              </div>
+            </div>}
+            {provider==="ollama"&&<div style={{marginBottom:14}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:5}}>{t.llmOllamaUrl}</div>
+              <div style={{display:"flex",gap:8}}>
+                <input value={ollamaUrl} onChange={e=>setOllamaUrl(e.target.value)} style={{flex:1,border:"1.5px solid #ddd",borderRadius:7,padding:"7px 10px",fontSize:13,color:"#333"}}/>
+                <button onClick={()=>testOllama(ollamaUrl)} style={{...S.btn("#a070c0","#fff"),fontSize:12}}>{t.llmConnect}</button>
+              </div>
+              <div style={{fontSize:11,color:"#aaa",marginTop:5}}>{t.llmOllamaHint}</div>
+            </div>}
+            <div style={{display:"flex",alignItems:"center",gap:8,background:"#f8f8f8",borderRadius:8,padding:"8px 12px",marginBottom:14}}>
+              <span>{sd}</span><span style={{fontSize:13,color:sc,fontWeight:600}}>{t.llmStatus[status]}</span>
+            </div>
+            <div>
+              <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:5}}>{t.llmModel}</div>
+              {models.length>0
+                ?<select value={model} onChange={e=>setModel(e.target.value)} style={{width:"100%",border:"1.5px solid #ddd",borderRadius:7,padding:"7px 10px",fontSize:13,color:"#333",background:"#fff"}}>{models.map(m=><option key={m} value={m}>{m}</option>)}</select>
+                :<div style={{fontSize:12,color:"#aaa",fontStyle:"italic",padding:"6px 0"}}>{provider==="ollama"?t.llmNoModels:t.llmApiKeyPlaceholder}</div>}
+            </div>
+          </>}
+
+          {tab==="limits" && <>
+            <div style={{fontSize:12,color:"#888",marginBottom:14,lineHeight:1.5}}>
+              Control how many tokens each call can generate and how much context is passed to agents. Lower values = faster + cheaper. Higher = better quality.
+            </div>
+            <div style={{fontWeight:700,fontSize:12,color:"#4060c0",marginBottom:8,borderBottom:"1px solid #eee",paddingBottom:4}}>
+              Max output tokens (per call)
+            </div>
+            <NumInput label="Agent default" hint="Regular lab/library/archive steps" value={maxDefault} onChange={setMaxDefault}/>
+            <NumInput label="Board / publish" hint="Final publish step (non-code)" value={maxBoard} onChange={setMaxBoard}/>
+            <NumInput label="Code output" hint="Board step when task is code" value={maxCode} onChange={setMaxCode} max={16000}/>
+            <NumInput label="Planning" hint="Manager creates team plan" value={maxPlan} onChange={setMaxPlan}/>
+            <NumInput label="Final report" hint="Manager summary report" value={maxReport} onChange={setMaxReport}/>
+            <NumInput label="Finalize / synthesis" hint="Final result JSON synthesis" value={maxFinalize} onChange={setMaxFinalize}/>
+
+            <div style={{fontWeight:700,fontSize:12,color:"#a070c0",marginBottom:8,borderBottom:"1px solid #eee",paddingBottom:4,marginTop:16}}>
+              Context passed to agents
+            </div>
+            <NumInput label="Board entries" hint="Max team results included in context" value={ctxBoard} onChange={setCtxBoard} min={1} max={20}/>
+            <NumInput label="Inbox messages" hint="Max inbox messages per agent" value={ctxInbox} onChange={setCtxInbox} min={1} max={10}/>
+            <NumInput label="Prev result chars" hint="Chars per board entry / prev result" value={ctxPrev} onChange={setCtxPrev} min={50} max={4000}/>
+            <NumInput label="Archive chars per doc" hint="Max chars from each archive doc" value={ctxArchive} onChange={setCtxArchive} min={100} max={20000}/>
+          </>}
+        </div>
+
+        <div style={{padding:"12px 20px",borderTop:"1px solid #eee",display:"flex",gap:10,justifyContent:"flex-end",flexShrink:0}}>
           <button onClick={onClose} style={S.btn("#eee","#555")}>{t.llmCancel}</button>
-          <button onClick={()=>onSave({provider,apiKey,ollamaUrl,model,availableModels:models})} disabled={!model} style={{...S.btn(!model?"#ccc":"#2a8a50","#fff"),opacity:!model?0.5:1}}>{t.llmSave}</button>
+          <button onClick={()=>onSave({provider,apiKey,ollamaUrl,model,availableModels:models,
+            maxTokensDefault:maxDefault,maxTokensBoard:maxBoard,maxTokensCode:maxCode,
+            maxTokensPlan:maxPlan,maxTokensReport:maxReport,maxTokensFinalize:maxFinalize,
+            contextBoardEntries:ctxBoard,contextInboxMessages:ctxInbox,
+            contextArchiveChars:ctxArchive,contextPrevResultChars:ctxPrev,
+          })} disabled={!model} style={{...S.btn(!model?"#ccc":"#2a8a50","#fff"),opacity:!model?0.5:1}}>{t.llmSave}</button>
         </div>
       </div>
     </div>
@@ -635,7 +1037,7 @@ function SettingsModal({agentDefs,onSave,onClose,t}) {
       <div style={{background:"#fff",borderRadius:16,maxWidth:640,width:"100%",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 16px 64px #0005"}}>
         <div style={{padding:"14px 20px",borderBottom:"1px solid #eee",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <b style={{fontSize:16}}>{t.settingsTitle}</b>
-          <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#888"}}>x</button>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#888"}}>×</button>
         </div>
         <div style={{padding:20,display:"flex",flexDirection:"column",gap:16}}>
           {defs.map(d=>(
@@ -690,16 +1092,16 @@ function ArchiveModal({files,onSave,onClose,t}) {
       <div style={{background:"#fff",borderRadius:16,maxWidth:640,width:"100%",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 16px 64px #0005"}}>
         <div style={{padding:"14px 20px",borderBottom:"1px solid #eee",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <b style={{fontSize:16}}>{t.archiveModal}</b>
-          <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#888"}}>x</button>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#888"}}>×</button>
         </div>
         <div style={{padding:20,display:"flex",flexDirection:"column",gap:12}}>
           {items.length===0&&<div style={{fontSize:12,color:"#bbb",fontStyle:"italic"}}>{t.archiveEmpty}</div>}
           {items.map((f,i)=>(
             <div key={f.id} style={{border:"1.5px solid #a070c044",borderRadius:9,padding:"10px 12px",background:"#fdf8ff"}}>
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-                <span>doc</span>
+                <span>📄</span>
                 <input value={f.name} onChange={e=>setItems(p=>p.map((x,j)=>j===i?{...x,name:e.target.value}:x))} style={{flex:1,border:"1.5px solid #c0a0d0",borderRadius:5,padding:"3px 8px",fontSize:12,fontWeight:700,color:"#6040a0"}}/>
-                <button onClick={()=>setItems(p=>p.filter((_,j)=>j!==i))} style={{...S.btn("#fee","#d04040"),fontSize:11,padding:"2px 8px"}}>x</button>
+                <button onClick={()=>setItems(p=>p.filter((_,j)=>j!==i))} style={{...S.btn("#fee","#d04040"),fontSize:11,padding:"2px 8px"}}>×</button>
               </div>
               <textarea value={f.text} onChange={e=>setItems(p=>p.map((x,j)=>j===i?{...x,text:e.target.value}:x))} style={{width:"100%",minHeight:56,border:"1.5px solid #e0d0f0",borderRadius:6,padding:"5px 8px",fontSize:11,resize:"vertical",boxSizing:"border-box",color:"#444",lineHeight:1.5}}/>
               <div style={{fontSize:10,color:"#aaa",marginTop:2}}>{f.text.length} {t.chars}</div>
@@ -748,7 +1150,7 @@ function PlanTable({stages,agentDefs,t,currentStageId}) {
                 </td>
                 <td style={{padding:"4px 8px",border:"1px solid #eee",color:"#667"}}>{zmap[s.zone]||s.zone}</td>
                 <td style={{padding:"4px 8px",border:"1px solid #eee",color:"#555",maxWidth:120,wordBreak:"break-word"}}>{s.receiveDesc||"-"}</td>
-                <td style={{padding:"4px 8px",border:"1px solid #eee",color:s.loop?"#c8860a":"#aaa"}}>{s.loop?"x"+s.loop.max:"-"}</td>
+                <td style={{padding:"4px 8px",border:"1px solid #eee",color:s.loop?"#c8860a":"#aaa"}}>{s.loop?"×"+s.loop.max:"-"}</td>
               </tr>
             );
           })}
@@ -758,14 +1160,20 @@ function PlanTable({stages,agentDefs,t,currentStageId}) {
   );
 }
 
-const FIG_STYLES=[{id:"modern",label:"[]"},{id:"minimal",label:"~"},{id:"dot",label:"o"}];
+const FIG_STYLES=[{id:"modern",label:"[]"},{id:"minimal",label:"~"},{id:"dot",label:"○"}];
 
 export default function App() {
   const [lang,setLang]=useState(()=>loadLS("lang","en"));
   const t={...T[lang],lang};
 
-  const [llmCfg,setLlmCfg]=useState(()=>loadLS("llmCfg",{provider:"anthropic",apiKey:"",ollamaUrl:"http://localhost:11434",model:"claude-sonnet-4-20250514",availableModels:[]}));
+  const [llmCfg,setLlmCfg]=useState(()=>loadLS("llmCfg",{provider:"anthropic",apiKey:"",ollamaUrl:"http://localhost:11434",model:"claude-sonnet-4-20250514",availableModels:[],
+    maxTokensDefault:500, maxTokensBoard:1000, maxTokensCode:1500, maxTokensPlan:600, maxTokensReport:500, maxTokensFinalize:800,
+    contextBoardEntries:10, contextInboxMessages:1, contextArchiveChars:2000, contextPrevResultChars:500,
+  }));
+  const [mcpServers,setMcpServers]=useState(()=>loadLS("mcpServers",[]));
   const [showLLM,setShowLLM]=useState(false);
+  const [showMCP,setShowMCP]=useState(false);
+  const [showFullLog,setShowFullLog]=useState(false);
   const [figStyle,setFigStyle]=useState("modern");
   const [pattern,setPattern]=useState("supervisor");
   const [phase,setPhase]=useState("idle");
@@ -775,6 +1183,12 @@ export default function App() {
   const [speed,setSpeed]=useState(3);
   const [editingPlan,setEditingPlan]=useState(false);
   const [planEditValue,setPlanEditValue]=useState("");
+
+  // Full detailed log (LLM calls + events)
+  const [fullLog,setFullLog]=useState([]);
+  const addFullLog = useCallback((entry) => {
+    setFullLog(p=>[...p.slice(-500), {...entry, timestamp:ts()}]);
+  }, []);
 
   const [agentDefs,setAgentDefs]=useState(()=>{
     const stored=loadLS("agentDefs",null);
@@ -834,7 +1248,6 @@ export default function App() {
 
   useEffect(()=>{if(logRef.current)logRef.current.scrollTop=logRef.current.scrollHeight;},[log]);
 
-  // Animation loop
   useEffect(()=>{
     const iv=setInterval(()=>{
       setAgents(prev=>prev.map(ag=>{
@@ -858,10 +1271,59 @@ export default function App() {
     return ()=>clearInterval(iv);
   },[]);
 
-  const addLog=msg=>setLog(l=>[...l.slice(-150),msg]);
-  const ask=(sys,usr,maxTok,timeout)=>callLLM(llmCfg,sys,usr,maxTok,timeout);
+  const addLog = msg => {
+    const entry = ts()+" "+msg;
+    setLog(l=>[...l.slice(-150), entry]);
+    addFullLog({type:"event", text:msg});
+  };
+
+  const ask = useCallback(async(sys, usr, maxTok, timeout, agentId) => {
+    const activeMcpServers = mcpServers.filter(s=>s.enabled && s.useForContext);
+    const result = await callLLM(llmCfg, sys, usr, maxTok, timeout, activeMcpServers);
+    const def = agentId ? agentDefs.find(d=>d.id===agentId) : null;
+    addFullLog({
+      type:"llm",
+      agent: def?(def.emoji+" "+def.name):"system",
+      system: sys,
+      user: usr,
+      response: result.text,
+      rawResponse: result.raw ? JSON.stringify(result.raw, null, 2) : null,
+    });
+    return result;
+  }, [llmCfg, mcpServers, agentDefs, addFullLog]);
 
   const ZONES_T=Object.fromEntries(ZONE_KEYS.map(k=>([k,{...ZONE_BASE[k],label:(t.zones&&t.zones[k])||k}])));
+
+  // ── Save result via MCP (multi-turn so tools actually execute) ────────
+  const saveResultViaMCP = useCallback(async(resultText, goalText) => {
+    const saveServers = mcpServers.filter(s=>s.enabled && s.saveResult);
+    if (!saveServers.length) return;
+    for (const srv of saveServers) {
+      try {
+        addLog("🔌 MCP saving via ["+srv.name+"]...");
+        const sys = "You are a result-saving assistant. Your ONLY job is to use the available MCP tools to save or create content. Do NOT just describe what you would do — actually call the tools. Create a new item, page, card, or document using the tools provided by the '"+srv.name+"' server.";
+        const usr = "Use the tools from '"+srv.name+"' to save this result.\n\nTask: "+goalText+"\n\nContent to save:\n"+resultText.slice(0,3000);
+        const result = await callLLMWithMCP(llmCfg, sys, usr, 1000, 40000, [{url:srv.url, name:srv.name}]);
+        const toolsUsed = result.toolUseLog&&result.toolUseLog.length
+          ? " Tools called: "+result.toolUseLog.map(t=>t.name).join(", ")
+          : " (no tools called — check server auth)";
+        addLog("🔌 MCP ["+srv.name+"]:"+toolsUsed);
+        addFullLog({
+          type:"mcp",
+          agent:"system",
+          text:"MCP save via "+srv.name+toolsUsed,
+          system:sys,
+          user:usr,
+          response:result.text,
+          toolUseLog: result.toolUseLog,
+          rawResponse: result.raw ? JSON.stringify(result.raw,null,2) : null,
+        });
+      } catch(e) {
+        addLog("🔌 MCP error ["+srv.name+"]: "+e.message);
+        addFullLog({type:"error", agent:"system", text:"MCP error ["+srv.name+"]: "+e.message});
+      }
+    }
+  }, [mcpServers, llmCfg, addLog, addFullLog]);
 
   const runStage=useCallback(async(stage,ss)=>{
     setLoading(true);
@@ -870,9 +1332,8 @@ export default function App() {
 
     const def=agentDefs.find(d=>d.id===stage.agentId);
     const zoneLabel=(t.zones&&t.zones[stage.zone])||stage.zone;
-    addLog(">> "+(def&&def.emoji)+" "+(def&&def.name)+" -> "+zoneLabel);
+    addLog(">> "+(def&&def.emoji)+" "+(def&&def.name)+" → "+zoneLabel);
 
-    // Park others
     setAgents(prev=>prev.map(ag=>{
       if(ag.id===stage.agentId) return ag;
       const seat=COMMON_SEATS[ag.id]||{x:80,y:120};
@@ -880,7 +1341,6 @@ export default function App() {
               agentStatus:ag.agentStatus==="done"?"done":"waiting", bubble:"", transitTo:null};
     }));
 
-    // Move active agent
     const targetPos=stage.zone==="common"
       ?(COMMON_SEATS[stage.agentId]||{x:80,y:120})
       :getZonePos(stage.zone,0,1);
@@ -889,9 +1349,8 @@ export default function App() {
       :ag
     ));
 
-    const {sys,user}=buildPrompt(stage.agentId,stage,ss,agentDefs,archiveFiles,t,lang);
+    const {sys,user}=buildPrompt(stage.agentId,stage,ss,agentDefs,archiveFiles,t,lang,llmCfg);
 
-    // Abort if paused before LLM call
     if(pausedRef.current){
       setLoading(false); setActiveNow([]); runRef.current=false; return;
     }
@@ -902,12 +1361,12 @@ export default function App() {
     let result=null;
     let attempts=stage.attempts||0;
     while(attempts<3){
-      const res=await ask(sys,user,maxTok,20000);
+      const res=await ask(sys,user,maxTok,20000,stage.agentId);
       if(res.ok){result=res.text;break;}
       attempts++;
-      addLog("Timeout: "+(def&&def.name)+", retry "+attempts);
+      addLog("⏱ Timeout: "+(def&&def.name)+", retry "+attempts);
       if(attempts>=3){
-        addLog("Skipped: "+(def&&def.name));
+        addLog("⏭ Skipped: "+(def&&def.name));
         result="[skipped]";
         setSystemState(prev=>({...prev,stages:prev.stages.map(s=>s.id===stage.id?{...s,status:"skipped",attempts}:s)}));
         break;
@@ -918,11 +1377,23 @@ export default function App() {
     setSystemState(prev=>{
       const newBoard={...prev.sharedBoard,[stage.agentId]:{text:finalResult,round:prev.managerState.round,zone:stage.zone,timestamp:Date.now()}};
       const newStages=prev.stages.map(s=>s.id===stage.id?{...s,status:"done",attempts}:s);
-      return {...prev,sharedBoard:newBoard,stages:newStages};
+
+      // ── CRITIC LOOP FIX ────────────────────────────────────────────────
+      // When critic finishes, inject its verdict into manager's inbox immediately
+      let newInbox = {...prev.inbox};
+      if (stage.agentId === "critic") {
+        const manDef = agentDefs.find(d=>d.id==="manager");
+        if (manDef) {
+          const verdictMsg = {from:"critic", type:"verdict", text:finalResult, round:prev.managerState.round};
+          newInbox["manager"] = [...(newInbox["manager"]||[]), verdictMsg];
+        }
+      }
+
+      return {...prev, sharedBoard:newBoard, stages:newStages, inbox:newInbox};
     });
 
     setAgents(prev=>prev.map(ag=>ag.id===stage.agentId?{...ag,bubble:finalResult,agentStatus:"done"}:ag));
-    addLog((def&&def.emoji)+" "+(def&&def.name)+": "+finalResult);
+    addLog((def&&def.emoji)+" "+(def&&def.name)+": "+finalResult.slice(0,120)+(finalResult.length>120?"...":""));
 
     // Arrow to next
     const updSS=systemStateRef.current;
@@ -930,11 +1401,10 @@ export default function App() {
     if(nextStage&&nextStage.agentId!==stage.agentId){
       const nd=agentDefs.find(d=>d.id===nextStage.agentId);
       setArrows([{from:stage.agentId,to:nextStage.agentId}]);
-      addLog((def&&def.name)+" -> "+(nd&&nd.name));
+      addLog("↪ "+(def&&def.name)+" → "+(nd&&nd.name));
       setTimeout(()=>setArrows([]),1200);
     }
 
-    // Return to common
     if(stage.zone!=="board"){
       const seat=COMMON_SEATS[stage.agentId]||{x:80,y:120};
       setAgents(prev=>prev.map(ag=>ag.id===stage.agentId
@@ -947,18 +1417,24 @@ export default function App() {
 
     setActiveNow([]);
     setLoading(false);
-  },[agentDefs,archiveFiles,t,lang]);
+  },[agentDefs,archiveFiles,t,lang,ask]);
 
   const doReplan=useCallback(async(ss,currentGoal)=>{
     setPhase("replanning");
-    addLog(t.replanLog);
+    addLog("🔄 "+t.replanLog);
     const manDef=agentDefs.find(d=>d.id==="manager");
     const teamStr=activeTeam.map(id=>{const d=agentDefs.find(x=>x.id===id);return (d&&d.name)+"("+(d&&d.role)+")";}).join(", ");
     const boardText=Object.entries(ss.sharedBoard).map(([id,v])=>{const d=agentDefs.find(x=>x.id===id);return (d&&d.emoji)+" "+(d&&d.name)+": "+v.text;}).join("\n");
-    const inboxText=Object.entries((ss.inbox&&ss.inbox[manDef&&manDef.id])||{}).map(([,v])=>typeof v==="object"?JSON.stringify(v):v).join("\n");
+
+    // Include critic verdict from inbox
+    const manInbox = (ss.inbox&&ss.inbox["manager"])||[];
+    const criticVerdicts = manInbox.filter(m=>m.from==="critic").map(m=>m.text).join("\n");
+    const inboxText = criticVerdicts || Object.entries((ss.inbox&&ss.inbox[manDef&&manDef.id])||{}).map(([,v])=>typeof v==="object"?JSON.stringify(v):v).join("\n");
+
     const {ok,text}=await ask(
       t.replanSys(manDef&&manDef.name,manDef&&manDef.role,teamStr),
-      t.replanUser(currentGoal,boardText,inboxText),400,15000
+      t.replanUser(currentGoal,boardText,inboxText),
+      400,15000,"manager"
     );
     let ready=false, newInstructions={};
     if(ok){
@@ -986,7 +1462,9 @@ export default function App() {
     return "continue";
   },[agentDefs,activeTeam,t,ask]);
 
-  // Main runner effect
+  const goalRef = useRef(goal);
+  goalRef.current = goal;
+
   useEffect(()=>{
     if(phase!=="running"||loading||frozenRef.current||paused||runRef.current) return;
     const ss=systemStateRef.current;
@@ -1011,22 +1489,35 @@ export default function App() {
       .then(async()=>{
         const updSS=systemStateRef.current;
         const allDoneNow=updSS.stages.every(s=>s.status==="done"||s.status==="skipped");
-        if(allDoneNow){setPhase("finalizing");doFinalize(updSS);}
-        else{
-          const criticDone=updSS.stages.find(s=>s.agentId==="critic"&&s.status==="done");
-          if(criticDone){
-            const criticText=((updSS.sharedBoard["critic"]||{}).text)||"";
-            const neg=["not approved","rejected","fail","poor","missing","incomplete","rework","rewrite","недостаточно","не соответствует","плохо","переделать","отклонено"];
-            if(neg.some(s=>criticText.toLowerCase().includes(s))&&updSS.managerState.round<updSS.managerState.maxRounds){
-              const decision=await doReplan(updSS,goal);
-              if(decision==="finalize"){setPhase("finalizing");doFinalize(systemStateRef.current);}
-              else setPhase("running");
+        if(allDoneNow){
+          setPhase("finalizing");
+          doFinalize(updSS);
+          return;
+        }
+        // ── CRITIC → MANAGER LOOP ────────────────────────────────────────
+        if(nextStage.agentId==="critic"){
+          const criticText=(updSS.sharedBoard["critic"]||{}).text||"";
+          const needsRevision=criticNeedsRevision(criticText);
+          addLog("⚡ Critic verdict: "+(needsRevision?"NEEDS REVISION":"APPROVED"));
+          if(needsRevision && updSS.managerState.round < updSS.managerState.maxRounds){
+            const decision=await doReplan(updSS, goalRef.current);
+            if(decision==="finalize"){
+              setPhase("finalizing");
+              doFinalize(systemStateRef.current);
+            } else {
+              // Reset runRef BEFORE setRunTick so the effect can re-enter
+              runRef.current=false;
+              setRunTick(n=>n+1);
             }
+            return;
           }
         }
       })
       .catch(console.error)
-      .finally(()=>{runRef.current=false;setRunTick(n=>n+1);});
+      .finally(()=>{
+        // Only clear runRef here if not already cleared above (critic branch)
+        if(runRef.current) { runRef.current=false; setRunTick(n=>n+1); }
+      });
   },[phase,loading,frozen,paused,runTick,runStage,doReplan]);
 
   const doFinalize=async(ss)=>{
@@ -1038,7 +1529,7 @@ export default function App() {
       .join("\n\n");
 
     const isCodeOutput=outputType==="code";
-    const finalMaxTok=isCodeOutput?1500:800;
+    const finalMaxTok = isCodeOutput ? (llmCfg.maxTokensCode||1500) : (llmCfg.maxTokensFinalize||800);
     const codeFormat='{"language":"python","description":"one sentence","code":"FULL EXECUTABLE CODE HERE","usage":"how to run"}';
     const outFmtFinal=isCodeOutput?codeFormat:(OUT_PROMPTS[outputType]||OUT_PROMPTS.other);
     const finalPrompt=isCodeOutput
@@ -1047,7 +1538,7 @@ export default function App() {
 
     const {ok:ok1,text:contentRaw}=await ask(
       isCodeOutput?"You are a code writer. Return ONLY valid JSON with complete executable code.":"Return ONLY valid JSON without extra text or markdown.",
-      finalPrompt,finalMaxTok,30000
+      finalPrompt,finalMaxTok,30000,"manager"
     );
 
     if(ok1){
@@ -1066,13 +1557,16 @@ export default function App() {
       setBoardCards([{platform:"Result",text:boardText}]);
     }
 
+    // Save via MCP if configured
+    await saveResultViaMCP(contentRaw||boardText, goal);
+
     setLoading(false);
     setPhase("done");
     setShowResult(true);
 
     ask(
       t.reportSys(manDef&&manDef.name,manDef&&manDef.role),
-      t.reportUser(goal,boardText),500,20000
+      t.reportUser(goal,boardText), llmCfg.maxTokensReport||500, 20000, "manager"
     ).then(({text})=>{if(text)setManagerReport(text);});
   };
 
@@ -1106,7 +1600,7 @@ export default function App() {
     const {ok,text}=await ask(
       t.planPromptSys(manDef.name,manDef.role,allRoles,archiveTitles),
       t.planPromptUser(g,t.patternNames[pattern],t.patternDesc[pattern]),
-      600,15000
+      llmCfg.maxTokensPlan||600, 15000, "manager"
     );
 
     let team=[], outType="other", instructions={}, planDescription=g;
@@ -1123,7 +1617,6 @@ export default function App() {
       addLog(t.timeoutLog(manDef.name));
     }
 
-    // Fallback if team empty but user asked for all
     if(team.length===0){
       const allKw=/всю команду|всех|all team|everyone|all agents|задействуй всех/i;
       if(allKw.test(g)) team=agentDefs.filter(d=>d.id!=="manager").map(d=>d.id);
@@ -1209,7 +1702,7 @@ export default function App() {
     addLog(t.correctionLog(pauseInput));
     const manDef=agentDefs.find(d=>d.id==="manager");
     const teamStr=activeTeam.map(id=>{const d=agentDefs.find(x=>x.id===id);return (d&&d.name)+"("+(d&&d.role)+")";}).join(", ");
-    const {text}=await ask(t.correctionSys(manDef&&manDef.name,manDef&&manDef.role,teamStr,goal),t.correctionUser(pauseInput),400,15000);
+    const {text}=await ask(t.correctionSys(manDef&&manDef.name,manDef&&manDef.role,teamStr,goal),t.correctionUser(pauseInput),400,15000,"manager");
     if(text){
       setAgents(prev=>prev.map(ag=>ag.id==="manager"?{...ag,bubble:text}:ag));
       addLog(t.managerLog(manDef&&manDef.name,text));
@@ -1236,6 +1729,7 @@ export default function App() {
   const handleSaveSettings=defs=>{setAgentDefs(defs);saveLS("agentDefs",defs);setAgents(initAgents(defs));setShowSettings(false);addLog(t.agentsSaved);};
   const handleSaveArchive=files=>{setArchiveFiles(files);saveLS("archiveFiles",files);setShowArchive(false);addLog(t.archiveSaved(files.length));};
   const handleSaveLLM=cfg=>{setLlmCfg(cfg);saveLS("llmCfg",cfg);setShowLLM(false);addLog("LLM: "+cfg.provider+" / "+cfg.model);};
+  const handleSaveMCP=servers=>{setMcpServers(servers);saveLS("mcpServers",servers);setShowMCP(false);addLog("🔌 MCP: "+servers.filter(s=>s.enabled).length+" active server(s)");};
   const handleLangChange=l=>{
     setLang(l); saveLS("lang",l);
     setAgentDefs(prev=>{
@@ -1252,6 +1746,7 @@ export default function App() {
     setSystemState(prev=>({...prev,stages:builtStages}));
   };
 
+  const activeMcpCount = mcpServers.filter(s=>s.enabled).length;
   const llmLabel=llmCfg.model?(llmCfg.provider==="anthropic"?"Anthropic: ":"Ollama: ")+(llmCfg.model.length>18?llmCfg.model.slice(0,18)+"...":llmCfg.model):"No LLM";
   const manDef=agentDefs.find(d=>d.id==="manager");
   const currentStage=systemState.stages.find(s=>s.id===currentStageId);
@@ -1321,6 +1816,9 @@ export default function App() {
         <button onClick={()=>setShowLLM(true)} style={{display:"flex",alignItems:"center",gap:4,padding:"3px 9px",borderRadius:7,border:"1.5px solid "+(llmCfg.model?"#4060c0":"#f0a000"),background:llmCfg.model?"#f0f4ff":"#fff8ee",cursor:"pointer",fontSize:11,color:llmCfg.model?"#4060c0":"#c87000",fontWeight:600}}>
           {llmLabel}
         </button>
+        <button onClick={()=>setShowMCP(true)} style={{display:"flex",alignItems:"center",gap:4,padding:"3px 9px",borderRadius:7,border:"1.5px solid "+(activeMcpCount?"#a070c0":"#ddd"),background:activeMcpCount?"#f8f0ff":"#f8f8f8",cursor:"pointer",fontSize:11,color:activeMcpCount?"#a070c0":"#888",fontWeight:600}}>
+          🔌 MCP{activeMcpCount?" ("+activeMcpCount+")":""}
+        </button>
         <select value={lang} onChange={e=>handleLangChange(e.target.value)} style={{padding:"3px 6px",borderRadius:6,border:"1px solid #ddd",background:"#f4f4f8",color:"#333",fontSize:11,cursor:"pointer"}}>
           <option value="ru">RU</option><option value="en">EN</option>
         </select>
@@ -1346,6 +1844,11 @@ export default function App() {
           <span style={{fontSize:10,color:"#4060c0",fontWeight:700,minWidth:14}}>{speed}</span>
         </div>
         <div style={{marginLeft:"auto",display:"flex",gap:5,alignItems:"center"}}>
+          <button onClick={()=>setShowFullLog(true)}
+            style={{...S.btn("#1e1e2e","#cdd6f4"),fontSize:11,padding:"3px 9px",border:"1px solid #333",display:"flex",alignItems:"center",gap:4}}>
+            <span style={{fontSize:12}}>📋</span>{t.fullLog}
+            {fullLog.length>0&&<span style={{background:"#4060c0",color:"#fff",borderRadius:10,fontSize:9,padding:"1px 5px",fontWeight:700}}>{fullLog.length}</span>}
+          </button>
           {phase==="running"&&!paused&&<button onClick={handlePause} style={{...S.btn("#fff3cd","#c8860a"),border:"1px solid #c8a040",fontSize:11}}>{t.pause}</button>}
           {phase==="running"&&paused&&<button onClick={handleResume} style={{...S.btn("#d4edda","#2a8a50"),border:"1px solid #2a8a50",fontSize:11}}>{t.resume}</button>}
           {(phase==="running"||phase==="done")&&<button onClick={()=>setShowResult(true)} disabled={phase!=="done"} style={{...S.btn(phase==="done"?"#2a8a50":"#ccc","#fff"),fontSize:11,opacity:phase==="done"?1:0.6}}>{t.result}</button>}
@@ -1357,7 +1860,7 @@ export default function App() {
       <div style={{background:"#f8f8ff",borderBottom:"1px solid #e8e8f0",padding:"2px 14px",fontSize:10,color:"#6070a0",flexShrink:0,display:"flex",alignItems:"center",gap:8}}>
         <span>{t.patternNames[pattern]}: {t.patternDesc[pattern]}</span>
         {currentStage&&phase==="running"&&<span style={{color:"#4060c0",fontWeight:700}}>
-          {currentStage.step}/{systemState.stages.length}: {agentDefs.find(d=>d.id===currentStage.agentId)&&agentDefs.find(d=>d.id===currentStage.agentId).name} -> {ZONES_T[currentStage.zone]&&ZONES_T[currentStage.zone].label}
+          {currentStage.step}/{systemState.stages.length}: {agentDefs.find(d=>d.id===currentStage.agentId)&&agentDefs.find(d=>d.id===currentStage.agentId).name} → {ZONES_T[currentStage.zone]&&ZONES_T[currentStage.zone].label}
         </span>}
         {phase==="replanning"&&<span style={{color:"#c8860a",fontWeight:700}}>{t.replanLog}</span>}
       </div>
@@ -1447,7 +1950,6 @@ export default function App() {
           {loading&&(
             <div style={{position:"absolute",top:10,left:"50%",transform:"translateX(-50%)",background:"#ffffffee",border:"1px solid #c0c8ff",borderRadius:20,padding:"5px 16px",fontSize:13,color:"#4060c0",display:"flex",alignItems:"center",gap:8,zIndex:10,whiteSpace:"nowrap"}}>
               {activeNow.length>0?t.nowWorking+" "+activeNow.map(id=>{const d=agentDefs.find(x=>x.id===id);return d&&d.name;}).join(", "):t.agentsThinking}
-              <style>{"@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}"}</style>
             </div>
           )}
 
@@ -1457,7 +1959,7 @@ export default function App() {
               <textarea value={pauseInput} onChange={e=>setPauseInput(e.target.value)} placeholder={t.correctionPlaceholder} autoFocus style={{width:"100%",minHeight:70,border:"1.5px solid #c8a04088",borderRadius:7,padding:8,fontSize:13,resize:"vertical",boxSizing:"border-box",color:"#333"}}/>
               <div style={{display:"flex",gap:8,marginTop:8}}>
                 <button onClick={handlePauseInstruction} disabled={pauseLoading||!pauseInput.trim()} style={{...S.btn("#c8860a","#fff"),flex:1,opacity:pauseLoading||!pauseInput.trim()?0.5:1}}>{pauseLoading?t.thinking:t.sendToMax}</button>
-                <button onClick={handleResume} style={S.btn("#eee","#555")}>x</button>
+                <button onClick={handleResume} style={S.btn("#eee","#555")}>×</button>
               </div>
             </div>
           )}
@@ -1523,7 +2025,7 @@ export default function App() {
             const ag=agents.find(a=>a.id===frozen);
             return ag?(
               <div style={{position:"absolute",bottom:14,left:"50%",transform:"translateX(-50%)",background:"#fff",border:"2px solid #4060c0",borderRadius:12,padding:14,width:360,zIndex:10,boxShadow:"0 4px 20px #0002"}}>
-                <div style={{fontSize:13,color:"#555",marginBottom:7}}>* {ag.emoji} <b style={{color:ag.color}}>{ag.name}</b> — {t.freezeInstruction}</div>
+                <div style={{fontSize:13,color:"#555",marginBottom:7}}>❄️ {ag.emoji} <b style={{color:ag.color}}>{ag.name}</b> — {t.freezeInstruction}</div>
                 <textarea value={editBubble} onChange={e=>setEditBubble(e.target.value)} style={{width:"100%",border:"1.5px solid #aac",borderRadius:6,padding:7,fontSize:13,resize:"vertical",minHeight:56,boxSizing:"border-box",color:"#333"}}/>
                 <div style={{display:"flex",gap:7,marginTop:7}}>
                   <button onClick={handleSendInstruction} style={{...S.btn("#2a8a50","#fff"),flex:1}}>{t.send2}</button>
@@ -1559,7 +2061,7 @@ export default function App() {
                   const def=agentDefs.find(d=>d.id===s.agentId);
                   const isCur=s.id===currentStageId;
                   return(
-                    <div key={s.id} title={(s.step)+". "+(def&&def.name)+" -> "+((t.zones&&t.zones[s.zone])||s.zone)}
+                    <div key={s.id} title={(s.step)+". "+(def&&def.name)+" → "+((t.zones&&t.zones[s.zone])||s.zone)}
                       style={{fontSize:7,padding:"1px 4px",borderRadius:3,
                         background:s.status==="done"?"#4060c0":s.status==="skipped"?"#f0a000":isCur?"#90a8f0":"#eee",
                         color:s.status==="done"||isCur?"#fff":"#999",fontWeight:isCur?700:400}}>
@@ -1597,10 +2099,15 @@ export default function App() {
           )}
 
           <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",minHeight:0}}>
-            <div style={{padding:"4px 9px",fontSize:9,fontWeight:700,color:"#888",textTransform:"uppercase",letterSpacing:0.7,flexShrink:0}}>{t.log}</div>
+            <div style={{padding:"4px 9px",fontSize:9,fontWeight:700,color:"#888",textTransform:"uppercase",letterSpacing:0.7,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <span>{t.log}</span>
+              <button onClick={()=>setShowFullLog(true)} style={{...S.btn("#1e1e2e","#cdd6f4"),fontSize:8,padding:"2px 6px",border:"none"}}>
+                📋 {fullLog.length}
+              </button>
+            </div>
             <div ref={logRef} style={{flex:1,overflowY:"auto",padding:"0 9px 9px",minHeight:0}}>
               {log.map((l,i)=>(
-                <div key={i} style={{fontSize:9.5,color:"#555",borderBottom:"1px solid #f0f0f0",padding:"2px 0",lineHeight:1.4}}>{l}</div>
+                <div key={i} style={{fontSize:9.5,color:"#555",borderBottom:"1px solid #f0f0f0",padding:"2px 0",lineHeight:1.4,fontFamily:"monospace"}}>{l}</div>
               ))}
               {!log.length&&<div style={{fontSize:11,color:"#bbb",fontStyle:"italic"}}>{lang==="ru"?"Пока пусто...":"Empty so far..."}</div>}
             </div>
@@ -1609,15 +2116,17 @@ export default function App() {
       </div>
 
       {showLLM&&<LLMModal cfg={llmCfg} onSave={handleSaveLLM} onClose={()=>setShowLLM(false)} t={t}/>}
+      {showMCP&&<MCPModal servers={mcpServers} onSave={handleSaveMCP} onClose={()=>setShowMCP(false)} t={t}/>}
       {showSettings&&<SettingsModal agentDefs={agentDefs} onSave={handleSaveSettings} onClose={()=>setShowSettings(false)} t={t}/>}
       {showArchive&&<ArchiveModal files={archiveFiles} onSave={handleSaveArchive} onClose={()=>setShowArchive(false)} t={t}/>}
+      {showFullLog&&<FullLogModal entries={fullLog} onClose={()=>setShowFullLog(false)} onClear={()=>setFullLog([])} t={t}/>}
 
       {showResult&&(
         <div style={{position:"fixed",inset:0,background:"#00000055",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={e=>{if(e.target===e.currentTarget)setShowResult(false);}}>
           <div style={{background:"#fff",borderRadius:16,maxWidth:680,width:"100%",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 16px 64px #0005"}}>
             <div style={{padding:"14px 20px",borderBottom:"1px solid #eee",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <div><b style={{fontSize:16}}>{t.finalResults}</b><span style={{fontSize:11,color:"#888",marginLeft:10}}>{t.patternNames[pattern]}</span></div>
-              <button onClick={()=>setShowResult(false)} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#888"}}>x</button>
+              <button onClick={()=>setShowResult(false)} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#888"}}>×</button>
             </div>
             <div style={{padding:20,display:"flex",flexDirection:"column",gap:20}}>
               <div>
