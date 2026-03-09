@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 
 const T = {
   en: {
-    appName:"Little AI Beings", author:"Created by Marat Levykin",
+    appName:"Little AI Beings", author:"Created by Marat Levykin YouTube.com/@maratArtificialIntelligence, vk.com/ProfAI",
     llmSettings:"LLM Settings", llmProvider:"Provider",
     llmAnthropicKey:"Anthropic API Key", llmOllamaUrl:"Ollama URL",
     llmModel:"Model", llmConnect:"Connect",
@@ -119,7 +119,7 @@ const T = {
     allEvents:"All events",
   },
   ru: {
-    appName:"Little AI Beings", author:"Проект создан Marat Levykin",
+    appName:"Little AI Beings", author:"Проект создан Marat Levykin YouTube.com/@maratArtificialIntelligence, vk.com/ProfAI",
     llmSettings:"Настройки LLM", llmProvider:"Провайдер",
     llmAnthropicKey:"API ключ Anthropic", llmOllamaUrl:"Адрес Ollama",
     llmModel:"Модель", llmConnect:"Подключить",
@@ -834,49 +834,122 @@ function FullLogModal({entries, onClose, onClear, t}) {
 
 function Fig({x,y,color,emoji,agentStatus,figStyle,inLab}) {
   const frozen = agentStatus==="stopped";
-  const sc=inLab?0.58:1;
-  const fc=frozen?"#bbb":color;
-  const skin=frozen?"#ddd":"#f5e0c0";
-  const hair="#3a2a1a";
+  // base scale halved; lab gets extra reduction
+  const sc = inLab ? 0.38 : 0.5;
+  const fc = frozen ? "#aaa" : color;
+  const dim = frozen ? "#888" : color;
   const pulse = agentStatus==="working";
+  const glowColor = color;
+
+  // shared robot parts scaled at sc=1 internally, outer g handles final scale
+  const RobotDot = () => (
+    <>
+      <circle r={11} fill={frozen?"#555":color} opacity={0.9}/>
+      <text textAnchor="middle" fontSize={10} dominantBaseline="middle" fill="#fff">{emoji}</text>
+    </>
+  );
+
+  const RobotMinimal = () => (
+    <>
+      {/* antenna */}
+      <line x1={0} y1={-28} x2={0} y2={-20} stroke={fc} strokeWidth={2}/>
+      <circle cy={-30} r={2.5} fill={fc}/>
+      {/* head */}
+      <rect x={-10} y={-20} width={20} height={14} rx={3} fill={fc}/>
+      <circle cx={-4} cy={-14} r={2.5} fill="#fff" opacity={0.9}/>
+      <circle cx={4} cy={-14} r={2.5} fill="#fff" opacity={0.9}/>
+      {/* body */}
+      <rect x={-9} y={-5} width={18} height={14} rx={2} fill={fc}/>
+      <rect x={-5} y={-2} width={10} height={4} rx={1} fill="#fff" opacity={0.3}/>
+      {/* arms */}
+      <rect x={-15} y={-4} width={6} height={10} rx={2} fill={fc}/>
+      <rect x={9} y={-4} width={6} height={10} rx={2} fill={fc}/>
+      {/* legs */}
+      <rect x={-8} y={10} width={6} height={10} rx={2} fill={fc}/>
+      <rect x={2} y={10} width={6} height={10} rx={2} fill={fc}/>
+    </>
+  );
+
+  const RobotModern = () => {
+    const panel = frozen?"#444":color+"33";
+    const screen = frozen?"#555":color+"55";
+    return (
+      <>
+        {/* antenna */}
+        <line x1={0} y1={-42} x2={0} y2={-34} stroke={fc} strokeWidth={2.5} strokeLinecap="round"/>
+        <circle cy={-44} r={3.5} fill={fc}/>
+        <circle cy={-44} r={1.5} fill="#fff" opacity={0.8}>
+          {pulse && <animate attributeName="opacity" values="0.8;0.1;0.8" dur="0.8s" repeatCount="indefinite"/>}
+        </circle>
+
+        {/* head — rounded rect */}
+        <rect x={-14} y={-34} width={28} height={22} rx={5} fill="#1a1a2e" stroke={fc} strokeWidth={1.5}/>
+        {/* visor */}
+        <rect x={-10} y={-30} width={20} height={8} rx={2} fill={screen}/>
+        {/* eyes inside visor */}
+        <circle cx={-5} cy={-26} r={3} fill={frozen?"#555":color}>
+          {pulse && <animate attributeName="opacity" values="1;0.3;1" dur="1s" repeatCount="indefinite"/>}
+        </circle>
+        <circle cx={5} cy={-26} r={3} fill={frozen?"#555":color}>
+          {pulse && <animate attributeName="opacity" values="1;0.3;1" dur="1s" repeatCount="indefinite" begin="0.5s"/>}
+        </circle>
+        {/* mouth grill */}
+        <rect x={-8} y={-20} width={16} height={3} rx={1} fill="#000" opacity={0.4}/>
+        <line x1={-5} y1={-18.5} x2={-5} y2={-21.5} stroke={fc} strokeWidth={1} opacity={0.5}/>
+        <line x1={0}  y1={-18.5} x2={0}  y2={-21.5} stroke={fc} strokeWidth={1} opacity={0.5}/>
+        <line x1={5}  y1={-18.5} x2={5}  y2={-21.5} stroke={fc} strokeWidth={1} opacity={0.5}/>
+
+        {/* neck */}
+        <rect x={-4} y={-12} width={8} height={5} rx={1} fill={fc} opacity={0.7}/>
+
+        {/* body */}
+        <rect x={-16} y={-7} width={32} height={26} rx={5} fill="#1a1a2e" stroke={fc} strokeWidth={1.5}/>
+        {/* chest panel */}
+        <rect x={-10} y={-3} width={20} height={12} rx={3} fill={panel}/>
+        {/* panel details */}
+        <circle cx={-6} cy={1} r={2} fill={fc} opacity={0.8}/>
+        <circle cx={0}  cy={1} r={2} fill={fc} opacity={0.5}/>
+        <circle cx={6}  cy={1} r={2} fill={fc} opacity={0.3}/>
+        <rect x={-8} y={5} width={16} height={2} rx={1} fill={fc} opacity={0.4}/>
+
+        {/* arms */}
+        <rect x={-24} y={-6} width={9} height={18} rx={4} fill="#1a1a2e" stroke={fc} strokeWidth={1.5}/>
+        <rect x={-22} y={2} width={5} height={4} rx={1} fill={fc} opacity={0.5}/>
+        <rect x={15} y={-6} width={9} height={18} rx={4} fill="#1a1a2e" stroke={fc} strokeWidth={1.5}/>
+        <rect x={17} y={2} width={5} height={4} rx={1} fill={fc} opacity={0.5}/>
+        {/* hands */}
+        <rect x={-23} y={12} width={7} height={6} rx={2} fill={fc} opacity={0.7}/>
+        <rect x={16} y={12} width={7} height={6} rx={2} fill={fc} opacity={0.7}/>
+
+        {/* legs */}
+        <rect x={-13} y={20} width={10} height={16} rx={3} fill="#1a1a2e" stroke={fc} strokeWidth={1.5}/>
+        <rect x={3}  y={20} width={10} height={16} rx={3} fill="#1a1a2e" stroke={fc} strokeWidth={1.5}/>
+        {/* feet */}
+        <rect x={-14} y={34} width={12} height={5} rx={2} fill={fc} opacity={0.8}/>
+        <rect x={2}  y={34} width={12} height={5} rx={2} fill={fc} opacity={0.8}/>
+
+        {/* emoji badge */}
+        <text textAnchor="middle" fontSize={16} y={-56}>{emoji}</text>
+      </>
+    );
+  };
+
   return (
     <g transform={"translate("+x+","+y+") scale("+sc+")"}>
-      {pulse && <circle r={24} fill="none" stroke={color} strokeWidth={2} opacity={0.4}>
-        <animate attributeName="r" values="20;30;20" dur="1.2s" repeatCount="indefinite"/>
-        <animate attributeName="opacity" values="0.4;0.05;0.4" dur="1.2s" repeatCount="indefinite"/>
-      </circle>}
-      {figStyle==="dot" && <>
-        <circle r={9} fill={frozen?"#ccc":color} opacity={0.85}/>
-        <text textAnchor="middle" fontSize={8} dominantBaseline="middle">{emoji}</text>
-      </>}
-      {figStyle==="minimal" && <>
-        <line x1={-5} y1={14} x2={-7} y2={28} stroke={fc} strokeWidth={5} strokeLinecap="round"/>
-        <line x1={5} y1={14} x2={7} y2={28} stroke={fc} strokeWidth={5} strokeLinecap="round"/>
-        <rect x={-10} y={-4} width={20} height={20} rx={6} fill={fc}/>
-        <line x1={-10} y1={2} x2={-18} y2={14} stroke={fc} strokeWidth={5} strokeLinecap="round"/>
-        <line x1={10} y1={2} x2={18} y2={14} stroke={fc} strokeWidth={5} strokeLinecap="round"/>
-        <circle cy={-20} r={13} fill={skin}/>
-        <text textAnchor="middle" fontSize={14} y={-40}>{emoji}</text>
-      </>}
-      {(figStyle==="modern"||figStyle==="detailed") && <>
-        <rect x={-8} y={12} width={7} height={16} rx={3} fill={fc}/>
-        <rect x={1} y={12} width={7} height={16} rx={3} fill={fc}/>
-        <ellipse cx={-5} cy={28} rx={5} ry={3} fill="#333"/>
-        <ellipse cx={5} cy={28} rx={5} ry={3} fill="#333"/>
-        <rect x={-10} y={-4} width={20} height={18} rx={5} fill={fc}/>
-        <rect x={-4} y={-3} width={8} height={14} rx={2} fill="#fff" opacity={0.6}/>
-        <rect x={-16} y={-3} width={7} height={14} rx={3} fill={fc}/>
-        <rect x={9} y={-3} width={7} height={14} rx={3} fill={fc}/>
-        <circle cx={-13} cy={12} r={4} fill={skin}/>
-        <circle cx={13} cy={12} r={4} fill={skin}/>
-        <ellipse cy={-20} rx={11} ry={12} fill={skin}/>
-        <ellipse cy={-30} rx={11} ry={5} fill={hair}/>
-        <circle cx={-4} cy={-21} r={1} fill="#222"/>
-        <circle cx={4} cy={-21} r={1} fill="#222"/>
-        <text textAnchor="middle" fontSize={13} y={-38}>{emoji}</text>
-      </>}
-      {frozen && <text textAnchor="middle" fontSize={16} y={-52}>❄️</text>}
-      {agentStatus==="done" && <text textAnchor="middle" fontSize={12} y={-52}>✅</text>}
+      {/* pulse ring */}
+      {pulse && (
+        <circle r={30} fill="none" stroke={glowColor} strokeWidth={3} opacity={0.5}>
+          <animate attributeName="r" values="26;44;26" dur="1.2s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="0.5;0;0.5" dur="1.2s" repeatCount="indefinite"/>
+        </circle>
+      )}
+
+      {figStyle==="dot"    && <RobotDot/>}
+      {figStyle==="minimal"&& <RobotMinimal/>}
+      {(figStyle==="modern"||figStyle==="detailed") && <RobotModern/>}
+
+      {frozen          && <text textAnchor="middle" fontSize={22} y={-52}>❄️</text>}
+      {agentStatus==="done" && <text textAnchor="middle" fontSize={18} y={-52}>✅</text>}
     </g>
   );
 }
@@ -1930,7 +2003,7 @@ export default function App() {
                 <g key={ag.id} onClick={()=>handleAgentClick(ag)}
                   style={{cursor:phase==="running"&&!loading&&!frozen&&isInvolved?"pointer":"default",opacity:isInvolved?1:0.22}}>
                   <Fig x={ag.x} y={ag.y} color={ag.color} emoji={ag.emoji} agentStatus={ag.agentStatus} figStyle={figStyle} inLab={inLab}/>
-                  <text x={ag.x} y={ag.y+(inLab?30:43)} textAnchor="middle"
+                  <text x={ag.x} y={ag.y+(inLab?16:22)} textAnchor="middle"
                     fill={ag.agentStatus==="working"?"#4060c0":ag.color}
                     fontSize={inLab?9:10} fontWeight={ag.agentStatus==="working"?700:600}>
                     {ag.name}
